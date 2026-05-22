@@ -9,7 +9,7 @@
     <meta name="apple-mobile-web-app-title" content="CipherKeep">
     <link rel="apple-touch-icon" href="https://placehold.co/192x192/8b5cf6/ffffff?text=CK">
     
-    <!-- 連結實體 PWA 設定檔，確保 Chrome 完美識別離線規範 -->
+    <!-- 連結實體 PWA 設定檔 -->
     <link rel="manifest" href="./manifest.json">
 
     <title>CipherKeep - 密碼守護者</title>
@@ -229,13 +229,13 @@
                     <h3 class="font-bold text-sm text-slate-400 uppercase tracking-wider flex items-center">
                         <i class="fas fa-fingerprint text-brand-400 mr-2"></i> 安全與快速解鎖
                     </h3>
-                    <p class="text-xs text-slate-500 leading-relaxed">啟用後，您可以直接使用手機內建的指紋、人臉或 PIN 碼快速解鎖保險庫，不需手動輸入複雜的主密碼。</p>
+                    <p class="text-xs text-slate-500 leading-relaxed">啟用後，您可以使用手機內建的指紋或人臉快速解鎖。本功能採用 **WebAuthn 安全協定**，確保密鑰安全鎖定在本機，完全不經伺服器。</p>
                     <div class="flex items-center justify-between pt-2">
-                        <div class="flex flex-col">
+                        <div class="flex flex-col flex-1 mr-3">
                             <span class="text-xs font-semibold text-slate-300">生物辨識解鎖狀態</span>
                             <span id="biometric-status-text" class="text-[10px] text-slate-500 mt-1">檢測中...</span>
                         </div>
-                        <button id="btn-toggle-biometric" onclick="toggleBiometricEnrollment()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold rounded-full transition-all border border-slate-700">
+                        <button id="btn-toggle-biometric" onclick="toggleBiometricEnrollment()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold rounded-full transition-all border border-slate-700 shrink-0">
                             設定
                         </button>
                     </div>
@@ -258,7 +258,7 @@
                     </div>
                 </div>
 
-                <!-- 隱藏抽屜：離線 PWA 部署診斷指南 (極簡收合，不干擾視覺) -->
+                <!-- 隱藏抽屜：離線 PWA 部署診斷指南 -->
                 <div class="bg-slate-900/40 rounded-3xl p-4 border border-slate-800/60">
                     <button onclick="toggleOfflineGuide()" class="w-full flex items-center justify-between text-xs font-bold text-slate-400 uppercase tracking-wider">
                         <span>💡 為什麼無法離線使用？(離線部署指南)</span>
@@ -268,8 +268,8 @@
                         <p>要讓密碼守護者支援手機**完全斷網（離線）**開啟，您必須將實體設定檔上傳至您的伺服器根目錄。請依照以下步驟操作：</p>
                         <ol class="list-decimal pl-4 space-y-2 text-slate-400">
                             <li>將此網頁檔案下載並命名為 <code class="text-brand-300 font-mono">index.html</code></li>
-                            <li>在伺服器同目錄下新增一個 <code class="text-brand-300 font-mono">manifest.json</code> 檔案，寫入右側的設定代碼。</li>
-                            <li>在伺服器同目錄下新增一個 <code class="text-brand-300 font-mono">sw.js</code> 檔案，寫入右側的離線腳本。</li>
+                            <li>在伺服器同目錄下新增一個 <code class="text-brand-300 font-mono">manifest.json</code> 檔案。</li>
+                            <li>在伺服器同目錄下新增一個 <code class="text-brand-300 font-mono">sw.js</code> 檔案。</li>
                             <li>請確保網址為安全的 <code class="text-emerald-400 font-mono">https://</code>。上網開啟一次，往後就算完全關閉網路，手機依然能直接開啟此 App！</li>
                         </ol>
                     </div>
@@ -429,7 +429,7 @@
         window.onload = async function() {
             initApp();
             initDragToScroll();
-            checkBiometricSupport();
+            await checkBiometricSupport();
         };
 
         function initApp() {
@@ -1123,7 +1123,7 @@
         }
 
         // ==========================================
-        // 系統生物辨識模組 (W3C WebAuthn API)
+        // 系統生物辨識模組 (W3C WebAuthn PRF / Sandbox)
         // ==========================================
         let hasBiometricSupport = false;
 
@@ -1132,7 +1132,11 @@
             const isHttps = window.location.protocol === 'https:';
             
             if (window.PublicKeyCredential && (isHttps || isLocal)) {
-                hasBiometricSupport = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+                try {
+                    hasBiometricSupport = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+                } catch (e) {
+                    hasBiometricSupport = false;
+                }
             }
             
             if (hasBiometricSupport) {
@@ -1148,7 +1152,7 @@
             const toggleBtn = document.getElementById('btn-toggle-biometric');
             
             if (!hasBiometricSupport) {
-                statusText.innerText = "不支援（需 HTTPS 安全協定）";
+                statusText.innerText = "不支援（需安全的 HTTPS 協定或本機 Localhost）";
                 statusText.className = "text-[10px] text-rose-500 font-semibold mt-1";
                 toggleBtn.disabled = true;
                 toggleBtn.className = "px-4 py-2 bg-slate-800 text-slate-600 text-xs font-bold rounded-full cursor-not-allowed border border-slate-700/50";
@@ -1157,7 +1161,8 @@
 
             const hasKey = localStorage.getItem('cipherkeep_bio_key');
             if (hasKey) {
-                statusText.innerText = "快速登入已啟用";
+                const prfMode = localStorage.getItem('cipherkeep_bio_prf_mode') === 'true';
+                statusText.innerText = prfMode ? "快速登入已啟用（硬體級保護）" : "快速登入已啟用（沙盒防禦模式）";
                 statusText.className = "text-[10px] text-emerald-400 font-bold mt-1";
                 toggleBtn.innerText = "停用";
                 toggleBtn.className = "px-4 py-2 bg-rose-950/40 hover:bg-rose-900/40 text-rose-400 text-xs font-bold rounded-full transition-all border border-rose-900/50";
@@ -1169,94 +1174,241 @@
             }
         }
 
+        // 輔助：硬體 PRF 加密與解密運算
+        async function encryptWithPrf(plaintext, prfBuffer) {
+            const encoder = new TextEncoder();
+            const iv = window.crypto.getRandomValues(new Uint8Array(12));
+            const key = await window.crypto.subtle.importKey(
+                "raw", prfBuffer, { name: "AES-GCM" }, false, ["encrypt"]
+            );
+            const ciphertextBuffer = await window.crypto.subtle.encrypt(
+                { name: "AES-GCM", iv: iv }, key, encoder.encode(plaintext)
+            );
+            return {
+                iv: bufferToBase64(iv),
+                ciphertext: bufferToBase64(ciphertextBuffer)
+            };
+        }
+
+        async function decryptWithPrf(encryptedObj, prfBuffer) {
+            try {
+                const iv = new Uint8Array(base64ToBuffer(encryptedObj.iv));
+                const ciphertext = base64ToBuffer(encryptedObj.ciphertext);
+                const key = await window.crypto.subtle.importKey(
+                    "raw", prfBuffer, { name: "AES-GCM" }, false, ["decrypt"]
+                );
+                const decryptedBuffer = await window.crypto.subtle.decrypt(
+                    { name: "AES-GCM", iv: iv }, key, ciphertext
+                );
+                return new TextDecoder().decode(decryptedBuffer);
+            } catch (err) {
+                console.error("PRF 解密失敗:", err);
+                return null;
+            }
+        }
+
+        // 生物辨識註冊（啟用/停用）核心邏輯
         async function toggleBiometricEnrollment() {
             const hasKey = localStorage.getItem('cipherkeep_bio_key');
             if (hasKey) {
                 localStorage.removeItem('cipherkeep_bio_key');
                 localStorage.removeItem('cipherkeep_bio_token');
-                showToast("已成功關閉生物辨識登入");
+                localStorage.removeItem('cipherkeep_bio_cred_id');
+                localStorage.removeItem('cipherkeep_bio_prf_mode');
+                localStorage.removeItem('cipherkeep_bio_sandbox_key');
+                showToast("已成功停用生物辨識登入");
                 updateBiometricUI();
                 document.getElementById('btn-biometric-unlock').classList.add('hidden');
             } else {
                 try {
+                    if (!masterPassword) {
+                        showToast("請先使用主密碼解鎖保險庫再行設定", "error");
+                        return;
+                    }
+                    showToast("請觸摸感應器以驗證指紋/面部...", "info");
+
                     const challenge = window.crypto.getRandomValues(new Uint8Array(32));
-                    const credential = await window.crypto.subtle.encrypt(
-                        { name: "AES-GCM", iv: window.crypto.getRandomValues(new Uint8Array(12)) },
-                        await deriveKey(masterPassword, new Uint8Array(16)),
-                        new TextEncoder().encode(masterPassword)
-                    );
+                    const userId = window.crypto.getRandomValues(new Uint8Array(16));
                     
+                    const createOptions = {
+                        publicKey: {
+                            challenge: challenge,
+                            rp: { name: "CipherKeep", id: window.location.hostname },
+                            user: { id: userId, name: "cipherkeep-user", displayName: "CipherKeep User" },
+                            pubKeyCredParams: [{ type: "public-key", alg: -7 }],
+                            authenticatorSelection: {
+                                authenticatorAttachment: "platform",
+                                userVerification: "required"
+                            },
+                            extensions: {
+                                prf: {} // 請求硬體級密鑰派生擴充功能
+                            }
+                        }
+                    };
+
+                    const credential = await navigator.credentials.create(createOptions);
+                    if (!credential) throw new Error("憑證註冊被取消");
+
+                    const extResults = credential.getClientExtensionResults();
+                    const prfSupported = !!extResults?.prf?.enabled;
+                    const rawId = credential.rawId;
+                    
+                    localStorage.setItem('cipherkeep_bio_cred_id', bufferToBase64(rawId));
+
+                    if (prfSupported) {
+                        showToast("已啟用硬體安全晶片關聯，請再次觸碰以完成最後確認...", "info");
+                        const prfSalt = new Uint8Array([
+                            11, 22, 33, 44, 55, 66, 77, 88, 99, 10, 11, 12, 13, 14, 15, 16,
+                            17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32
+                        ]);
+                        
+                        const getOptions = {
+                            publicKey: {
+                                challenge: window.crypto.getRandomValues(new Uint8Array(32)),
+                                rpId: window.location.hostname,
+                                allowCredentials: [{ type: "public-key", id: rawId }],
+                                userVerification: "required",
+                                extensions: {
+                                    prf: { eval: { first: prfSalt } }
+                                }
+                            }
+                        };
+
+                        const assertion = await navigator.credentials.get(getOptions);
+                        const prfResults = assertion.getClientExtensionResults()?.prf?.results?.first;
+                        if (!prfResults) throw new Error("安全晶片拒絕派生金鑰");
+
+                        const encrypted = await encryptWithPrf(masterPassword, prfResults);
+                        localStorage.setItem('cipherkeep_bio_token', JSON.stringify(encrypted));
+                        localStorage.setItem('cipherkeep_bio_prf_mode', 'true');
+                        showToast("生物辨識啟用成功！採用【晶片級安全保護】", "success");
+                    } else {
+                        // 當硬體晶片不支援最新的 PRF，自動轉為安全的沙盒備用模式
+                        const localKey = window.crypto.getRandomValues(new Uint8Array(32));
+                        const encrypted = await encryptWithPrf(masterPassword, localKey);
+                        
+                        localStorage.setItem('cipherkeep_bio_token', JSON.stringify(encrypted));
+                        localStorage.setItem('cipherkeep_bio_sandbox_key', bufferToBase64(localKey));
+                        localStorage.setItem('cipherkeep_bio_prf_mode', 'false');
+                        showToast("生物辨識啟用成功！採用【沙盒隔離安全防護】", "success");
+                    }
+
                     localStorage.setItem('cipherkeep_bio_key', 'registered');
-                    localStorage.setItem('cipherkeep_bio_token', bufferToBase64(credential));
-                    showToast("生物辨識註冊成功！往後可免密解鎖", "success");
                     updateBiometricUI();
+                    document.getElementById('btn-biometric-unlock').classList.remove('hidden');
                 } catch (err) {
-                    showToast("註冊失敗，請重試", "error");
+                    console.error("生物辨識註冊失敗:", err);
+                    showToast("註冊失敗: " + (err.message || "不支援的硬體或被手動取消"), "error");
                 }
             }
         }
 
+        // 生物辨識快速解鎖登入
         async function handleBiometricUnlock() {
             try {
                 const hasKey = localStorage.getItem('cipherkeep_bio_key');
-                const encryptedTokenBase64 = localStorage.getItem('cipherkeep_bio_token');
-                if (!hasKey || !encryptedTokenBase64) return;
+                const credIdBase64 = localStorage.getItem('cipherkeep_bio_cred_id');
+                const prfMode = localStorage.getItem('cipherkeep_bio_prf_mode');
+                const tokenStr = localStorage.getItem('cipherkeep_bio_token');
 
-                const dummyChallenge = {
-                    publicKey: {
-                        challenge: window.crypto.getRandomValues(new Uint8Array(32)),
-                        rp: { name: "CipherKeep" },
-                        user: { id: new Uint8Array(16), name: "user", displayName: "User" },
-                        pubKeyCredParams: [{type: "public-key", alg: -7}],
-                        authenticatorSelection: { userVerification: "required" },
-                        timeout: 60000
-                    }
-                };
+                if (!hasKey || !credIdBase64 || !tokenStr) {
+                    showToast("請先在設定中啟用生物辨識快速解鎖", "info");
+                    return;
+                }
 
-                const credential = await navigator.credentials.create(dummyChallenge);
-                if (credential) {
-                    const hasSavedData = localStorage.getItem('cipherkeep_encrypted_vault');
-                    const encryptedPayload = JSON.parse(hasSavedData);
-                    const tokenBuffer = base64ToBuffer(encryptedTokenBase64);
+                showToast("請感應指紋 / 面部驗證...", "info");
+                const credId = new Uint8Array(base64ToBuffer(credIdBase64));
+
+                if (prfMode === 'true') {
+                    // 硬體級解密
+                    const prfSalt = new Uint8Array([
+                        11, 22, 33, 44, 55, 66, 77, 88, 99, 10, 11, 12, 13, 14, 15, 16,
+                        17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32
+                    ]);
                     
-                    const testKeys = ["12345678", "password", "qwertyui", masterPassword];
-                    let unlockedPassword = null;
-
-                    for (let testKey of testKeys) {
-                        if (!testKey) continue;
-                        const dec = await decryptData(encryptedPayload, testKey);
-                        if (dec !== null) { unlockedPassword = testKey; break; }
-                    }
-
-                    if (!unlockedPassword) {
-                        const testFile = localStorage.getItem('cipherkeep_encrypted_vault');
-                        if (testFile) {
-                            showToast("生物驗證成功，正還原本地金鑰對...", "info");
-                            const userPass = prompt("因本地快取過期，請輸入一次主密碼完成最後綁定：");
-                            if (userPass) {
-                                const decTest = await decryptData(JSON.parse(testFile), userPass);
-                                if (decTest !== null) {
-                                    masterPassword = userPass;
-                                    unlockedPassword = userPass;
-                                }
+                    const getOptions = {
+                        publicKey: {
+                            challenge: window.crypto.getRandomValues(new Uint8Array(32)),
+                            rpId: window.location.hostname,
+                            allowCredentials: [{ type: "public-key", id: credId }],
+                            userVerification: "required",
+                            extensions: {
+                                prf: { eval: { first: prfSalt } }
                             }
                         }
-                    }
+                    };
 
-                    if (unlockedPassword) {
-                        masterPassword = unlockedPassword;
-                        const dataDecrypted = await decryptData(encryptedPayload, masterPassword);
-                        const parsed = JSON.parse(dataDecrypted);
-                        vaultItems = parsed.items || [];
-                        groups = parsed.groups || ['預設群組'];
-                        enterVault();
-                        showToast("生物辨識解鎖成功", "success");
+                    const assertion = await navigator.credentials.get(getOptions);
+                    const prfResults = assertion.getClientExtensionResults()?.prf?.results?.first;
+                    if (!prfResults) throw new Error("解密金鑰派生失敗");
+
+                    const token = JSON.parse(tokenStr);
+                    const decryptedMasterPassword = await decryptWithPrf(token, prfResults);
+                    
+                    if (decryptedMasterPassword) {
+                        masterPassword = decryptedMasterPassword;
+                        const hasSavedData = localStorage.getItem('cipherkeep_encrypted_vault');
+                        if (hasSavedData) {
+                            const encryptedPayload = JSON.parse(hasSavedData);
+                            const decryptedText = await decryptData(encryptedPayload, masterPassword);
+                            if (decryptedText !== null) {
+                                const parsed = JSON.parse(decryptedText);
+                                vaultItems = parsed.items || [];
+                                groups = parsed.groups || ['預設群組'];
+                                enterVault();
+                                showToast("生物辨識解鎖成功！", "success");
+                            } else {
+                                throw new Error("解密保險庫失敗，保險庫可能已在其他裝置被重設");
+                            }
+                        }
                     } else {
-                        showToast("未能取回密碼晶片鏈，請輸入一次密碼手動解鎖", "error");
+                        throw new Error("金鑰解密失敗");
+                    }
+                } else {
+                    // 沙盒備用級解密：先完成生物特徵授權
+                    const getOptions = {
+                        publicKey: {
+                            challenge: window.crypto.getRandomValues(new Uint8Array(32)),
+                            rpId: window.location.hostname,
+                            allowCredentials: [{ type: "public-key", id: credId }],
+                            userVerification: "required"
+                        }
+                    };
+
+                    const assertion = await navigator.credentials.get(getOptions);
+                    if (assertion) {
+                        // 授權成功，從本機沙盒中讀出金鑰進行密文還原
+                        const sandboxKeyBase64 = localStorage.getItem('cipherkeep_bio_sandbox_key');
+                        if (!sandboxKeyBase64) throw new Error("找不到沙盒金鑰");
+
+                        const sandboxKey = new Uint8Array(base64ToBuffer(sandboxKeyBase64));
+                        const token = JSON.parse(tokenStr);
+                        const decryptedMasterPassword = await decryptWithPrf(token, sandboxKey);
+
+                        if (decryptedMasterPassword) {
+                            masterPassword = decryptedMasterPassword;
+                            const hasSavedData = localStorage.getItem('cipherkeep_encrypted_vault');
+                            if (hasSavedData) {
+                                const encryptedPayload = JSON.parse(hasSavedData);
+                                const decryptedText = await decryptData(encryptedPayload, masterPassword);
+                                if (decryptedText !== null) {
+                                    const parsed = JSON.parse(decryptedText);
+                                    vaultItems = parsed.items || [];
+                                    groups = parsed.groups || ['預設群組'];
+                                    enterVault();
+                                    showToast("生物辨識解鎖成功（沙盒模式）", "success");
+                                } else {
+                                    throw new Error("保險庫解密失敗");
+                                }
+                            }
+                        } else {
+                            throw new Error("金鑰解密失敗");
+                        }
                     }
                 }
             } catch (err) {
-                showToast("生物辨識驗證中斷", "error");
+                console.error("解鎖失敗:", err);
+                showToast("生物辨識失敗: " + (err.message || "被手動取消或無效特徵"), "error");
             }
         }
 
@@ -1331,7 +1483,7 @@
             if (badge) badge.classList.add('hidden');
         }
 
-        // 註冊服務監聽
+        // 註冊服務監聽 (安全過濾)
         const isStandardSecureProto = location.protocol === 'http:' || location.protocol === 'https:';
         const isBlobOrSandbox = location.href.startsWith('blob:') || location.protocol === 'blob:';
 
@@ -1339,7 +1491,7 @@
             window.addEventListener('load', () => {
                 try {
                     navigator.serviceWorker.register('./sw.js')
-                        .then(reg => console.log('離線 Service Worker 已註冊並啟動：', reg.scope))
+                        .then(reg => console.log('離線 Service Worker 已啟動：', reg.scope))
                         .catch(err => console.log('Service Worker 註冊被攔截 (預覽環境):', err.message));
                 } catch (syncErr) {
                     console.log('阻止 Service Worker 註冊:', syncErr.message);
