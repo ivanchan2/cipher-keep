@@ -1,0 +1,1472 @@
+<!DOCTYPE html>
+<html lang="zh-TW" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <!-- PWA 行動裝置專屬與色彩配置 -->
+    <meta name="theme-color" content="#8b5cf6">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="CipherKeep">
+    <link rel="apple-touch-icon" href="https://placehold.co/192x192/8b5cf6/ffffff?text=CK">
+    
+    <!-- PWA 資訊清單 (Manifest) 宣告 - 使用 Base64 確保單一檔案下亦具備基本 PWA 辨識度 -->
+    <link rel="manifest" href="data:application/manifest+json;base64,eyJuYW1lIjoiQ2lwaGVyS2VlcCAtIOWvhumXmOWuiOitt+iAhemXmSIsInNob3J0X25hbWUiOiJDaXBoZXJLZWVwIiwiZGVzY3JpcHRpb24iOiLliavkuovntJrpm7bnn6XorZjorrzkv63lr4bnoLIsbXfphYIsIiwic3RhcnRfdXJsIjoiLiIsImRpc3BsYXkiOiJzdGFuZGFsb25lIiwib3JpZW50YXRpb24iOiJwb3J0cmFpdC1wcmltYXJ5IiwiYmFja2dyb3VuZF9jb2xvciI6IiMwZjBlMTMiLCJ0aGVtZV9jb2xvciI6IiM8YjVjZjYiLCJpY29ucyI6W3sic3JjIjoiaHR0cHM6Ly9wbGFjZWhvbGQuY28vMTkyeDE5Mi84YjVjZjYvZmZmZmZmP3RleHQ9Q0siLCJzaXplcyI6IjE5MngxOTIiLCJ0eXBlIjoiaW1hZ2UvcG5nIiwicHVycG9zZSI6ImFueSBtYXNrYWJsZSJ9LHsic3JjIjoiaHR0cHM6Ly9wbGFjZWhvbGQuY28vNTEyeDUxMi84YjVjZjYvZmZmZmZmP3RleHQ9Q2lwaGVyS2VlcCIsInNpemVzIjoiNTEyeDUxMiIsInR5cGUiOiJpbWFnZS9wbmciLCJwdXJwb3NlIjoiYW55IG1hc2thYmxlIn1dfQ==">
+
+    <title>CipherKeep - 密碼守護者</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts - Inter & Noto Sans TC -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+TC:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans TC', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#f5f3ff',
+                            100: '#ede9fe',
+                            500: '#8b5cf6', // Material Purple Primary
+                            600: '#7c3aed',
+                            700: '#6d28d9',
+                            900: '#4c1d95',
+                        },
+                        android: {
+                            darkBg: '#0f0e13',
+                            darkSurface: '#18171d',
+                            darkSurfaceVariant: '#24222a',
+                            lightBg: '#fbf8fd',
+                            lightSurface: '#ffffff',
+                            lightSurfaceVariant: '#f3edf7',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* 隱藏滾動條但保持功能 */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        /* 讓滑動群組標籤支援拖拉游標與流暢滾動 */
+        #group-tabs-container {
+            cursor: grab;
+            user-select: none;
+            -webkit-overflow-scrolling: touch;
+            scroll-behavior: smooth;
+        }
+        #group-tabs-container:active {
+            cursor: grabbing;
+        }
+        /* Android 彈性點擊效果 */
+        .ripple-btn {
+            position: relative;
+            overflow: hidden;
+            transition: background-color 0.2s, transform 0.1s;
+        }
+        .ripple-btn:active {
+            transform: scale(0.97);
+        }
+        body {
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+        }
+    </style>
+</head>
+<body class="bg-android-darkBg text-slate-100 font-sans min-h-screen flex flex-col justify-between overflow-x-hidden selection:bg-brand-500/30">
+
+    <!-- 全域通知元件 (Toast) -->
+    <div id="toast" class="fixed top-6 left-1/2 transform -translate-x-1/2 z-50 bg-brand-600 text-white px-5 py-3 rounded-full shadow-2xl flex items-center space-x-2 transition-all duration-300 opacity-0 pointer-events-none scale-90">
+        <span id="toast-icon"><i class="fas fa-info-circle"></i></span>
+        <span id="toast-text" class="text-sm font-medium">提示訊息</span>
+    </div>
+
+    <!-- 主容器 -->
+    <main class="flex-1 w-full max-w-md mx-auto flex flex-col relative pb-24">
+        
+        <!-- 1. 鎖定/解鎖/初始化畫面 (Lock Screen) -->
+        <div id="screen-lock" class="absolute inset-0 z-40 bg-android-darkBg flex flex-col justify-center px-6 py-8">
+            <div class="flex flex-col items-center justify-center flex-1 text-center">
+                <!-- App Logo -->
+                <div class="w-20 h-20 bg-gradient-to-tr from-brand-600 to-indigo-500 rounded-3xl flex items-center justify-center shadow-xl mb-6">
+                    <i class="fas fa-shield-halved text-white text-4xl"></i>
+                </div>
+                <h1 class="text-3xl font-bold tracking-tight mb-2">CipherKeep</h1>
+                <p id="lock-subtitle" class="text-slate-400 text-sm mb-8 px-4">軍事級零知識本地加密密碼庫</p>
+
+                <!-- 初始化/登入表單 -->
+                <div class="w-full max-w-xs space-y-4">
+                    <div id="master-password-group">
+                        <label id="master-password-label" class="block text-left text-xs font-semibold text-slate-400 mb-2 uppercase tracking-wider">輸入主密碼解鎖</label>
+                        <div class="relative">
+                            <input type="password" id="master-password-input" class="w-full bg-android-darkSurface border border-slate-700 rounded-2xl px-4 py-3.5 pr-12 text-center text-lg tracking-widest focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition-all text-white" placeholder="••••••••">
+                            <button onclick="togglePasswordVisibility('master-password-input', 'master-toggle-icon')" class="absolute right-4 top-1/2 transform -translate-y-1/2 text-slate-400">
+                                <i id="master-toggle-icon" class="far fa-eye"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- 重複確認主密碼 (僅在註冊時顯示) -->
+                    <div id="confirm-password-group" class="hidden">
+                        <label class="block text-left text-xs font-semibold text-slate-400 mb-2 uppercase tracking-wider">再次確認主密碼</label>
+                        <div class="relative">
+                            <input type="password" id="confirm-password-input" class="w-full bg-android-darkSurface border border-slate-700 rounded-2xl px-4 py-3.5 text-center text-lg tracking-widest focus:outline-none focus:border-brand-500 transition-all text-white" placeholder="••••••••">
+                        </div>
+                    </div>
+
+                    <button id="btn-submit-master" onclick="handleMasterPasswordSubmit()" class="w-full ripple-btn bg-brand-600 hover:bg-brand-500 text-white font-semibold py-3.5 px-6 rounded-2xl shadow-lg shadow-brand-900/20 transition-all mt-4">
+                        解鎖保險庫
+                    </button>
+                </div>
+            </div>
+            
+            <!-- 底部安全提示 -->
+            <div class="text-center text-xs text-slate-500">
+                <p><i class="fas fa-lock mr-1 text-emerald-500"></i> 本地 AES-GCM-256 位元端對端加密</p>
+                <p class="mt-1 text-amber-500/80">主密碼遺失將無法救回資料，請務必牢記</p>
+            </div>
+        </div>
+
+        <!-- 2. 主內容畫面 (解鎖後顯示) -->
+        <div id="app-content" class="hidden flex flex-col flex-1">
+            
+            <!-- 頂部列 (Header Bar) -->
+            <header class="sticky top-0 bg-android-darkBg/95 backdrop-blur-md px-6 py-4 flex items-center justify-between z-30 border-b border-slate-800/50">
+                <div class="flex items-center space-x-3">
+                    <div class="w-9 h-9 bg-brand-600 rounded-xl flex items-center justify-center">
+                        <i class="fas fa-vault text-white text-sm"></i>
+                    </div>
+                    <div>
+                        <h2 class="font-bold text-lg text-slate-100">CipherKeep</h2>
+                        <span class="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-medium">保險庫已解鎖</span>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <!-- PWA 獨立安裝按鈕徽章 -->
+                    <button id="pwa-install-badge" onclick="triggerPwaInstallation()" class="hidden px-3 py-1.5 bg-brand-600/30 hover:bg-brand-600 text-brand-300 hover:text-white text-xs font-bold rounded-full transition-all flex items-center space-x-1.5 animate-pulse">
+                        <i class="fas fa-download"></i>
+                        <span>安裝 App</span>
+                    </button>
+                    <button onclick="lockVault()" class="p-2.5 rounded-full hover:bg-android-darkSurfaceVariant text-slate-400 hover:text-white transition-all">
+                        <i class="fas fa-lock"></i>
+                    </button>
+                </div>
+            </header>
+
+            <!-- 頁面1：密碼保險庫頁面 (Vault) -->
+            <div id="page-vault" class="flex-1 flex flex-col px-4 py-4 space-y-4">
+                <!-- 搜尋與群組篩選 -->
+                <div class="space-y-3">
+                    <div class="relative">
+                        <span class="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400 text-sm">
+                            <i class="fas fa-search"></i>
+                        </span>
+                        <input type="text" id="search-input" oninput="renderVault()" class="w-full bg-android-darkSurface border-0 rounded-2xl py-3 pl-11 pr-4 text-sm text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500" placeholder="搜尋標題、帳號或網站...">
+                    </div>
+                    
+                    <!-- 自訂群組動態滑動標籤與群組管理按鈕 -->
+                    <div class="flex items-center space-x-2">
+                        <div id="group-tabs-container" class="flex-1 flex space-x-2 overflow-x-auto no-scrollbar py-1">
+                            <!-- 動態渲染群組標籤 -->
+                        </div>
+                        <button onclick="openManageGroupsModal()" class="p-2.5 bg-android-darkSurface hover:bg-android-darkSurfaceVariant text-slate-400 hover:text-white rounded-2xl transition-all shrink-0 border border-slate-800/60" title="管理自訂群組">
+                            <i class="fas fa-folder-open text-xs"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 密碼列表 -->
+                <div id="vault-list" class="flex-1 space-y-3 overflow-y-auto max-h-[calc(100vh-290px)] no-scrollbar pb-12">
+                    <!-- 動態渲染項目 -->
+                </div>
+            </div>
+
+            <!-- 頁面2：密碼產生器 (Generator) -->
+            <div id="page-generator" class="hidden flex-1 px-4 py-4 space-y-6">
+                <!-- 密碼生成預覽框 -->
+                <div class="bg-android-darkSurface rounded-3xl p-6 border border-slate-800 text-center relative overflow-hidden">
+                    <div class="absolute top-2 right-2">
+                        <span id="gen-strength-badge" class="text-[10px] px-2.5 py-1 rounded-full font-bold bg-emerald-500/20 text-emerald-400">超強安全</span>
+                    </div>
+                    <div id="generated-password-display" class="text-xl font-mono tracking-wider font-bold text-slate-100 break-all select-all py-6">
+                        載入中...
+                    </div>
+                    
+                    <div class="flex items-center justify-center space-x-3 mt-2">
+                        <button onclick="regeneratePassword()" class="ripple-btn flex-1 bg-slate-800 hover:bg-slate-700 text-white font-medium py-3 px-4 rounded-xl text-sm transition-all flex items-center justify-center space-x-2">
+                            <i class="fas fa-rotate"></i>
+                            <span>重新產生</span>
+                        </button>
+                        <button onclick="copyGeneratedPassword()" class="ripple-btn flex-1 bg-brand-600 hover:bg-brand-500 text-white font-medium py-3 px-4 rounded-xl text-sm transition-all flex items-center justify-center space-x-2">
+                            <i class="fas fa-copy"></i>
+                            <span>複製密碼</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 生成參數配置 -->
+                <div class="bg-android-darkSurface rounded-3xl p-5 space-y-5 border border-slate-800">
+                    <h3 class="font-bold text-sm text-slate-400 uppercase tracking-wider">產生器參數</h3>
+                    
+                    <!-- 長度調整 -->
+                    <div class="space-y-2">
+                        <div class="flex justify-between text-sm font-medium">
+                            <span class="text-slate-300">密碼字元長度</span>
+                            <span id="length-val" class="text-brand-400 font-bold">16</span>
+                        </div>
+                        <input type="range" id="length-slider" min="6" max="64" value="16" oninput="updateGeneratorSettings()" class="w-full accent-brand-500 bg-slate-700 h-1.5 rounded-lg appearance-none cursor-pointer">
+                    </div>
+
+                    <hr class="border-slate-800">
+
+                    <!-- 字元開關 -->
+                    <div class="space-y-4">
+                        <label class="flex items-center justify-between cursor-pointer">
+                            <div class="flex flex-col">
+                                <span class="text-sm font-semibold text-slate-200">大寫字母 (A-Z)</span>
+                                <span class="text-xs text-slate-500">例如: ABCDEF</span>
+                            </div>
+                            <input type="checkbox" id="chk-uppercase" checked onchange="updateGeneratorSettings()" class="w-5 h-5 accent-brand-500 rounded focus:ring-brand-500 bg-slate-800 border-slate-700">
+                        </label>
+                        <label class="flex items-center justify-between cursor-pointer">
+                            <div class="flex flex-col">
+                                <span class="text-sm font-semibold text-slate-200">小寫字母 (a-z)</span>
+                                <span class="text-xs text-slate-500">例如: abcdef</span>
+                            </div>
+                            <input type="checkbox" id="chk-lowercase" checked onchange="updateGeneratorSettings()" class="w-5 h-5 accent-brand-500 rounded focus:ring-brand-500 bg-slate-800 border-slate-700">
+                        </label>
+                        <label class="flex items-center justify-between cursor-pointer">
+                            <div class="flex flex-col">
+                                <span class="text-sm font-semibold text-slate-200">數字 (0-9)</span>
+                                <span class="text-xs text-slate-500">例如: 123456</span>
+                            </div>
+                            <input type="checkbox" id="chk-numbers" checked onchange="updateGeneratorSettings()" class="w-5 h-5 accent-brand-500 rounded focus:ring-brand-500 bg-slate-800 border-slate-700">
+                        </label>
+                        <label class="flex items-center justify-between cursor-pointer">
+                            <div class="flex flex-col">
+                                <span class="text-sm font-semibold text-slate-200">特殊符號 (!@#$)</span>
+                                <span class="text-xs text-slate-500">例如: @#_-$&amp;</span>
+                            </div>
+                            <input type="checkbox" id="chk-symbols" checked onchange="updateGeneratorSettings()" class="w-5 h-5 accent-brand-500 rounded focus:ring-brand-500 bg-slate-800 border-slate-700">
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 頁面3：工具與備份 (Tools) -->
+            <div id="page-tools" class="hidden flex-1 px-4 py-4 space-y-4">
+                
+                <div class="bg-android-darkSurface rounded-3xl p-5 space-y-4 border border-slate-800">
+                    <h3 class="font-bold text-sm text-slate-400 uppercase tracking-wider">備份與安全匯出</h3>
+                    <p class="text-xs text-slate-500">此工具完全離線運行。為防資料遺失，請妥善保管您的加密備份檔。匯出的檔案已通過您的「主密碼」加密保護。</p>
+                    
+                    <div class="grid grid-cols-2 gap-3 pt-2">
+                        <button onclick="exportEncryptedVault()" class="ripple-btn bg-slate-800 hover:bg-slate-700 text-white py-3.5 px-4 rounded-2xl text-xs font-semibold flex flex-col items-center justify-center space-y-2 border border-slate-700">
+                            <i class="fas fa-file-export text-xl text-brand-400"></i>
+                            <span>匯出加密保險庫</span>
+                        </button>
+                        
+                        <label class="ripple-btn bg-slate-800 hover:bg-slate-700 text-white py-3.5 px-4 rounded-2xl text-xs font-semibold flex flex-col items-center justify-center space-y-2 border border-slate-700 cursor-pointer text-center">
+                            <i class="fas fa-file-import text-xl text-emerald-400"></i>
+                            <span>匯入保險庫檔案</span>
+                            <input type="file" id="import-file-input" onchange="importEncryptedVault(event)" class="hidden" accept=".json">
+                        </label>
+                    </div>
+                </div>
+
+                <div class="bg-android-darkSurface rounded-3xl p-5 space-y-4 border border-slate-800">
+                    <h3 class="font-bold text-sm text-rose-500 uppercase tracking-wider">危險區域</h3>
+                    <p class="text-xs text-slate-500">清除保險庫會將此裝置上的所有已儲存密碼徹底抹除。執行前請確認已備份檔案。</p>
+                    
+                    <button onclick="confirmClearVault()" class="ripple-btn w-full bg-rose-950/40 hover:bg-rose-900/40 text-rose-400 border border-rose-900/60 font-semibold py-3 px-4 rounded-2xl text-xs transition-all flex items-center justify-center space-x-2">
+                        <i class="fas fa-trash-can"></i>
+                        <span>清除保險庫資料</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- 底部導航欄 (Bottom Navigation Bar) -->
+            <nav class="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-android-darkSurface/95 backdrop-blur-md border-t border-slate-800/80 px-6 py-2 flex justify-around items-center z-30">
+                <button onclick="switchTab('vault')" id="nav-vault" class="flex flex-col items-center space-y-1 text-brand-500 transition-all">
+                    <div class="w-12 h-8 bg-brand-500/20 rounded-full flex items-center justify-center">
+                        <i class="fas fa-vault text-base"></i>
+                    </div>
+                    <span class="text-[10px] font-bold">保險庫</span>
+                </button>
+                
+                <button onclick="switchTab('generator')" id="nav-generator" class="flex flex-col items-center space-y-1 text-slate-400 transition-all">
+                    <div class="w-12 h-8 rounded-full flex items-center justify-center">
+                        <i class="fas fa-key text-base"></i>
+                    </div>
+                    <span class="text-[10px] font-semibold">產生器</span>
+                </button>
+                
+                <button onclick="switchTab('tools')" id="nav-tools" class="flex flex-col items-center space-y-1 text-slate-400 transition-all">
+                    <div class="w-12 h-8 rounded-full flex items-center justify-center">
+                        <i class="fas fa-sliders text-base"></i>
+                    </div>
+                    <span class="text-[10px] font-semibold">設定備份</span>
+                </button>
+            </nav>
+
+            <!-- 懸浮新增按鈕 (Floating Action Button) -->
+            <button id="fab-add" onclick="openAddModal()" class="fixed bottom-20 right-6 md:right-[calc(50%-200px+24px)] z-30 ripple-btn w-14 h-14 bg-brand-600 hover:bg-brand-500 text-white rounded-2xl flex items-center justify-center shadow-xl shadow-brand-900/40">
+                <i class="fas fa-plus text-xl"></i>
+            </button>
+        </div>
+    </main>
+
+    <!-- 3. 新增/編輯密碼模態視窗 (Add/Edit Modal) -->
+    <div id="credential-modal" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm hidden flex items-end justify-center">
+        <div class="bg-android-darkSurface w-full max-w-md rounded-t-[32px] p-6 space-y-5 animate-slide-up transition-all max-h-[90vh] overflow-y-auto no-scrollbar border-t border-slate-800">
+            <div class="flex items-center justify-between pb-2">
+                <h3 id="modal-title" class="text-lg font-bold">新增認證憑證</h3>
+                <button onclick="closeCredentialModal()" class="p-2 rounded-full bg-slate-800 text-slate-400 hover:text-white">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+
+            <form id="credential-form" onsubmit="saveCredential(event)" class="space-y-4">
+                <input type="hidden" id="item-id">
+                
+                <!-- 群組選擇（寬度調整為滿版） -->
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 mb-2">安全群組</label>
+                    <select id="item-group" class="w-full bg-android-darkSurfaceVariant border border-slate-800 rounded-2xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500">
+                        <!-- 動態載入自訂群組 -->
+                    </select>
+                </div>
+
+                <!-- 標題 -->
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 mb-2">名稱標題</label>
+                    <input type="text" id="item-title" required class="w-full bg-android-darkSurfaceVariant border border-slate-800 rounded-2xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500" placeholder="例如: Google、富邦銀行">
+                </div>
+
+                <!-- 帳號 / 卡號 -->
+                <div>
+                    <label id="label-username" class="block text-xs font-semibold text-slate-400 mb-2">使用者名稱 / 帳號</label>
+                    <input type="text" id="item-username" class="w-full bg-android-darkSurfaceVariant border border-slate-800 rounded-2xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500" placeholder="example@gmail.com">
+                </div>
+
+                <!-- 密碼 / 安全碼 -->
+                <div>
+                    <label id="label-password" class="block text-xs font-semibold text-slate-400 mb-2">密碼</label>
+                    <div class="relative">
+                        <input type="password" id="item-password" class="w-full bg-android-darkSurfaceVariant border border-slate-800 rounded-2xl px-4 py-3 pr-24 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500" placeholder="輸入密碼">
+                        
+                        <div class="absolute right-2 top-1/2 transform -translate-y-1/2 flex items-center space-x-1">
+                            <button type="button" onclick="togglePasswordVisibility('item-password', 'modal-toggle-icon')" class="p-2 text-slate-400 hover:text-white">
+                                <i id="modal-toggle-icon" class="far fa-eye"></i>
+                            </button>
+                            <button type="button" onclick="fillWithGeneratedPassword()" class="p-2 text-brand-400 hover:text-brand-300 text-xs font-semibold">
+                                <i class="fas fa-magic"></i> 隨機生成新密碼
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 網址 / 備註 -->
+                <div>
+                    <label id="label-notes" class="block text-xs font-semibold text-slate-400 mb-2">安全筆記 / 其他資訊</label>
+                    <textarea id="item-notes" rows="3" class="w-full bg-android-darkSurfaceVariant border border-slate-800 rounded-2xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500" placeholder="在此處填寫備用碼、安全提示問答或卡片有效日期..."></textarea>
+                </div>
+
+                <div class="flex space-x-3 pt-4">
+                    <button type="button" onclick="closeCredentialModal()" class="ripple-btn flex-1 bg-slate-800 hover:bg-slate-700 text-white font-medium py-3 px-4 rounded-2xl text-sm transition-all">
+                        取消
+                    </button>
+                    <button type="submit" class="ripple-btn flex-1 bg-brand-600 hover:bg-brand-500 text-white font-semibold py-3 px-4 rounded-2xl text-sm shadow-lg shadow-brand-900/20 transition-all">
+                        儲存憑證
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 4. 確認清除保險庫警示視窗 (Danger Dialog) -->
+    <div id="danger-modal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden flex items-center justify-center p-6">
+        <div class="bg-android-darkSurface max-w-sm w-full rounded-[28px] p-6 border border-rose-900/50 space-y-4">
+            <div class="text-rose-500 text-3xl text-center">
+                <i class="fas fa-triangle-exclamation"></i>
+            </div>
+            <h3 class="text-lg font-bold text-slate-100 text-center">確定清除所有資料嗎？</h3>
+            <p class="text-sm text-slate-400 leading-relaxed text-center">此操作將永久刪除此裝置內所有加密的帳密資料，且無法復原。除非您有先前的備份檔，否則資料將永久遺失。</p>
+            <div class="flex space-x-3 pt-2">
+                <button onclick="closeDangerModal()" class="flex-1 bg-slate-800 hover:bg-slate-700 text-white font-medium py-3 px-4 rounded-xl text-xs transition-all">
+                    取消
+                </button>
+                <button onclick="clearVaultAndWipe()" class="flex-1 bg-rose-600 hover:bg-rose-500 text-white font-bold py-3 px-4 rounded-xl text-xs transition-all">
+                    確認清除
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 5. 群組管理模態視窗 (Manage Groups Modal) -->
+    <div id="groups-modal" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm hidden flex items-center justify-center p-6">
+        <div class="bg-android-darkSurface max-w-sm w-full rounded-[28px] p-6 border border-slate-800/80 space-y-4 max-h-[85vh] flex flex-col">
+            <div class="flex items-center justify-between border-b border-slate-800/60 pb-3">
+                <h3 class="text-base font-bold text-slate-200 flex items-center">
+                    <i class="fas fa-folder-open text-brand-400 mr-2"></i> 管理自訂群組
+                </h3>
+                <button onclick="closeManageGroupsModal()" class="p-1.5 rounded-full bg-slate-800 text-slate-400 hover:text-white transition-all">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            
+            <!-- 群組列表區（可捲動） -->
+            <div id="manage-groups-list" class="flex-1 overflow-y-auto space-y-2 py-2 pr-1 no-scrollbar max-h-[40vh]">
+                <!-- 動態載入群組項目與原地內聯編輯框 -->
+            </div>
+
+            <!-- 新增群組輸入區 -->
+            <div class="space-y-2 pt-3 border-t border-slate-800/60">
+                <label class="block text-[11px] font-semibold text-slate-400 tracking-wider">新增群組名稱</label>
+                <div class="flex space-x-2">
+                    <input type="text" id="new-group-name-input" onkeydown="if(event.key === 'Enter') addGroup()" class="flex-1 bg-android-darkSurfaceVariant border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-brand-500" placeholder="例如：社交網路、工作專用...">
+                    <button onclick="addGroup()" class="px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white text-xs font-semibold rounded-xl transition-all shadow-md shrink-0">
+                        新增
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let masterPassword = null;
+        let masterKey = null; // 加密金鑰物件
+        let vaultItems = [];  // 明文密碼庫（僅在解鎖狀態下存在於記憶體中）
+        let groups = ['預設群組']; // 初始包含一個可修改的「預設群組」
+        let activeTab = 'vault';
+        let groupFilter = 'all'; // 預設篩選「全部」
+        let editingGroupName = null; // 當前正在原地內聯修改名稱的群組原名
+
+        // 初始化
+        window.onload = async function() {
+            initApp();
+            initDragToScroll(); // 啟用群組標籤的滑鼠與觸控拖曳滾動功能
+        };
+
+        // 初始化與讀取狀態
+        function initApp() {
+            const hasSavedData = localStorage.getItem('cipherkeep_encrypted_vault');
+            if (hasSavedData) {
+                // 已有保險庫，引導解鎖
+                document.getElementById('master-password-label').innerText = "輸入主密碼解鎖保險庫";
+                document.getElementById('btn-submit-master').innerText = "解鎖保險庫";
+                document.getElementById('confirm-password-group').classList.add('hidden');
+            } else {
+                // 初次使用，引導註冊
+                document.getElementById('master-password-label').innerText = "設定您的主密碼 (最少8字元)";
+                document.getElementById('btn-submit-master').innerText = "建立新密碼庫";
+                document.getElementById('confirm-password-group').classList.remove('hidden');
+                document.getElementById('lock-subtitle').innerText = "初次使用：內建「預設群組」分類，並可於解鎖後任意自訂與改名";
+            }
+        }
+
+        // 顯示通知
+        function showToast(message, type = 'info') {
+            const toast = document.getElementById('toast');
+            const toastText = document.getElementById('toast-text');
+            const toastIcon = document.getElementById('toast-icon');
+            
+            toastText.innerText = message;
+            
+            if (type === 'success') {
+                toastIcon.innerHTML = '<i class="fas fa-check-circle text-emerald-400"></i>';
+            } else if (type === 'error') {
+                toastIcon.innerHTML = '<i class="fas fa-exclamation-triangle text-rose-400"></i>';
+            } else {
+                toastIcon.innerHTML = '<i class="fas fa-info-circle text-brand-400"></i>';
+            }
+
+            toast.classList.remove('opacity-0', 'pointer-events-none', 'scale-90');
+            toast.classList.add('opacity-100', 'scale-100');
+
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'pointer-events-none', 'scale-90');
+                toast.classList.remove('opacity-100', 'scale-100');
+            }, 3000);
+        }
+
+        // 啟用群組橫向標籤的滑鼠與觸控拖拉滾動
+        function initDragToScroll() {
+            const slider = document.getElementById('group-tabs-container');
+            if (!slider) return;
+            
+            let isDown = false;
+            let startX;
+            let scrollLeft;
+            let hasMoved = false;
+
+            // 當滑鼠按下時
+            slider.addEventListener('mousedown', (e) => {
+                isDown = true;
+                slider.style.scrollBehavior = 'auto'; // 拖曳中停用 CSS 平滑滾動以防延遲
+                startX = e.pageX - slider.offsetLeft;
+                scrollLeft = slider.scrollLeft;
+                hasMoved = false;
+            });
+
+            // 當滑鼠移出區域時
+            slider.addEventListener('mouseleave', () => {
+                isDown = false;
+            });
+
+            // 當滑鼠放開時
+            slider.addEventListener('mouseup', () => {
+                isDown = false;
+                slider.style.scrollBehavior = 'smooth'; // 放開後恢復平滑滾動
+            });
+
+            // 當滑鼠拖曳移動時
+            slider.addEventListener('mousemove', (e) => {
+                if (!isDown) return;
+                e.preventDefault();
+                const x = e.pageX - slider.offsetLeft;
+                const walk = (x - startX) * 1.5; // 拖動速度
+                
+                if (Math.abs(walk) > 5) {
+                    hasMoved = true;
+                }
+                slider.scrollLeft = scrollLeft - walk;
+            });
+
+            // 攔截並防止在拖拉過程中意外觸發分頁點擊選擇
+            slider.addEventListener('click', (e) => {
+                if (hasMoved) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }
+            }, true);
+        }
+
+        // 切換密碼可見性
+        function togglePasswordVisibility(inputId, iconId) {
+            const input = document.getElementById(inputId);
+            const icon = document.getElementById(iconId);
+            if (input.type === "password") {
+                input.type = "text";
+                icon.className = "far fa-eye-slash";
+            } else {
+                input.type = "password";
+                icon.className = "far fa-eye";
+            }
+        }
+
+        // ==========================================
+        // Web Crypto API 零知識加密技術 (核心加密模組)
+        // ==========================================
+
+        // 由主密碼與鹽值衍生加密金鑰 (PBKDF2)
+        async function deriveKey(password, salt) {
+            const encoder = new TextEncoder();
+            const passwordBytes = encoder.encode(password);
+            
+            const baseKey = await window.crypto.subtle.importKey(
+                "raw",
+                passwordBytes,
+                "PBKDF2",
+                false,
+                ["deriveKey"]
+            );
+
+            return window.crypto.subtle.deriveKey(
+                {
+                    name: "PBKDF2",
+                    salt: salt,
+                    iterations: 80000,
+                    hash: "SHA-256"
+                },
+                baseKey,
+                { name: "AES-GCM", length: 256 },
+                false,
+                ["encrypt", "decrypt"]
+            );
+        }
+
+        function bufferToBase64(buffer) {
+            let binary = '';
+            const bytes = new Uint8Array(buffer);
+            const len = bytes.byteLength;
+            for (let i = 0; i < len; i++) {
+                binary += String.fromCharCode(bytes[i]);
+            }
+            return window.btoa(binary);
+        }
+
+        function base64ToBuffer(base64) {
+            const binary = window.atob(base64);
+            const len = binary.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+                bytes[i] = binary.charCodeAt(i);
+            }
+            return bytes.buffer;
+        }
+
+        // 整體保險庫資料庫加密 (AES-GCM)
+        async function encryptData(plaintext, password) {
+            const encoder = new TextEncoder();
+            const salt = window.crypto.getRandomValues(new Uint8Array(16));
+            const iv = window.crypto.getRandomValues(new Uint8Array(12));
+            
+            const key = await deriveKey(password, salt);
+            const ciphertextBuffer = await window.crypto.subtle.encrypt(
+                { name: "AES-GCM", iv: iv },
+                key,
+                encoder.encode(plaintext)
+            );
+
+            return {
+                salt: bufferToBase64(salt),
+                iv: bufferToBase64(iv),
+                ciphertext: bufferToBase64(ciphertextBuffer)
+            };
+        }
+
+        // 整體保險庫資料解密 (AES-GCM)
+        async function decryptData(encryptedObj, password) {
+            try {
+                const salt = new Uint8Array(base64ToBuffer(encryptedObj.salt));
+                const iv = new Uint8Array(base64ToBuffer(encryptedObj.iv));
+                const ciphertext = base64ToBuffer(encryptedObj.ciphertext);
+                
+                const key = await deriveKey(password, salt);
+                const decryptedBuffer = await window.crypto.subtle.decrypt(
+                    { name: "AES-GCM", iv: iv },
+                    key,
+                    ciphertext
+                );
+
+                const decoder = new TextDecoder();
+                return decoder.decode(decryptedBuffer);
+            } catch (err) {
+                console.error("解密失敗:", err);
+                return null;
+            }
+        }
+
+        // 處理主密碼提交（建立庫或解鎖）
+        async function handleMasterPasswordSubmit() {
+            const passwordInput = document.getElementById('master-password-input').value;
+            const confirmInput = document.getElementById('confirm-password-input').value;
+            const hasSavedData = localStorage.getItem('cipherkeep_encrypted_vault');
+
+            if (!passwordInput || passwordInput.length < 8) {
+                showToast("主密碼長度至少需 8 個字元", "error");
+                return;
+            }
+
+            if (!hasSavedData) {
+                // 註冊模式
+                if (passwordInput !== confirmInput) {
+                    showToast("兩次輸入的主密碼不一致", "error");
+                    return;
+                }
+
+                masterPassword = passwordInput;
+                vaultItems = [];
+                groups = ['預設群組'];
+                
+                await saveVaultToLocalStorage();
+                showToast("保險庫建立成功！請妥善保存主密碼", "success");
+                enterVault();
+            } else {
+                // 解鎖模式
+                const encryptedPayload = JSON.parse(hasSavedData);
+                const decryptedText = await decryptData(encryptedPayload, passwordInput);
+
+                if (decryptedText !== null) {
+                    masterPassword = passwordInput;
+                    
+                    try {
+                        const parsed = JSON.parse(decryptedText);
+                        if (Array.isArray(parsed)) {
+                            vaultItems = parsed;
+                            groups = ['預設群組'];
+                            vaultItems.forEach(item => {
+                                if (!item.group) {
+                                    if (item.category === 'login') item.group = '登入帳號';
+                                    else if (item.category === 'card') item.group = '信用卡';
+                                    else if (item.category === 'note') item.group = '安全筆記';
+                                    else item.group = '預設群組';
+                                }
+                                if (item.group && !groups.includes(item.group)) {
+                                    groups.push(item.group);
+                                }
+                            });
+                        } else {
+                            vaultItems = parsed.items || [];
+                            groups = parsed.groups || [];
+                            if (groups.length === 0) {
+                                groups = ['預設群組'];
+                            }
+                        }
+                    } catch (e) {
+                        console.error("解析資料庫結構錯誤:", e);
+                        vaultItems = [];
+                        groups = ['預設群組'];
+                    }
+
+                    showToast("解鎖成功", "success");
+                    enterVault();
+                } else {
+                    showToast("主密碼錯誤，解鎖失敗", "error");
+                }
+            }
+        }
+
+        // 進入保險庫
+        function enterVault() {
+            document.getElementById('screen-lock').classList.add('hidden');
+            document.getElementById('app-content').classList.remove('hidden');
+            renderGroupFilterTabs();
+            renderVault();
+            regeneratePassword();
+        }
+
+        // 重新上鎖
+        function lockVault() {
+            masterPassword = null;
+            masterKey = null;
+            vaultItems = [];
+            groups = ['預設群組'];
+            editingGroupName = null;
+            document.getElementById('master-password-input').value = "";
+            document.getElementById('confirm-password-input').value = "";
+            document.getElementById('app-content').classList.add('hidden');
+            document.getElementById('screen-lock').classList.remove('hidden');
+            initApp();
+            showToast("保險庫已安全上鎖");
+        }
+
+        // 保存保險庫狀態至本地 localStorage
+        async function saveVaultToLocalStorage() {
+            if (!masterPassword) return;
+            const payload = {
+                items: vaultItems,
+                groups: groups
+            };
+            const plaintextJson = JSON.stringify(payload);
+            const encryptedPayload = await encryptData(plaintextJson, masterPassword);
+            localStorage.setItem('cipherkeep_encrypted_vault', JSON.stringify(encryptedPayload));
+        }
+
+        // 渲染頂部橫向滑動群組過濾標籤與即時數量統計
+        function renderGroupFilterTabs() {
+            const container = document.getElementById('group-tabs-container');
+            if (!container) return;
+            container.innerHTML = '';
+
+            if (groups.length === 0) {
+                groups = ['預設群組'];
+            }
+
+            const countAll = vaultItems.length;
+            const allBtn = document.createElement('button');
+            allBtn.onclick = () => setGroupFilter('all');
+            allBtn.className = `category-tab px-4 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all ${groupFilter === 'all' ? 'bg-brand-600 text-white shadow-sm' : 'bg-android-darkSurface text-slate-400'}`;
+            allBtn.innerHTML = `全部 (<span>${countAll}</span>)`;
+            container.appendChild(allBtn);
+
+            groups.forEach(gName => {
+                const countGroup = vaultItems.filter(item => item.group === gName).length;
+                const gBtn = document.createElement('button');
+                gBtn.onclick = () => setGroupFilter(gName);
+                gBtn.className = `category-tab px-4 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all ${groupFilter === gName ? 'bg-brand-600 text-white shadow-sm' : 'bg-android-darkSurface text-slate-400'}`;
+                gBtn.innerHTML = `${escapeHtml(gName)} (<span>${countGroup}</span>)`;
+                container.appendChild(gBtn);
+            });
+        }
+
+        function setGroupFilter(gName) {
+            groupFilter = gName;
+            renderGroupFilterTabs();
+            renderVault();
+        }
+
+        // 渲染密碼庫列表
+        function renderVault() {
+            const listContainer = document.getElementById('vault-list');
+            const searchKeyword = document.getElementById('search-input').value.toLowerCase();
+            
+            listContainer.innerHTML = '';
+            renderGroupFilterTabs();
+
+            const filteredItems = vaultItems.filter(item => {
+                const matchesGroup = (groupFilter === 'all' || item.group === groupFilter);
+                const matchesSearch = item.title.toLowerCase().includes(searchKeyword) || 
+                                      (item.username && item.username.toLowerCase().includes(searchKeyword));
+                return matchesGroup && matchesSearch;
+            });
+
+            if (filteredItems.length === 0) {
+                listContainer.innerHTML = `
+                    <div class="flex flex-col items-center justify-center py-16 text-slate-500">
+                        <i class="fas fa-folder-open text-4xl mb-4"></i>
+                        <p class="text-sm">該群組內沒有任何帳密項目</p>
+                    </div>
+                `;
+                return;
+            }
+
+            filteredItems.forEach(item => {
+                let iconClass = 'fas fa-shield-halved';
+                let iconBg = 'bg-brand-500/20 text-brand-400';
+                
+                const itemGroup = (item.group || '').toLowerCase();
+                const itemTitle = (item.title || '').toLowerCase();
+                
+                if (itemGroup.includes('卡') || itemGroup.includes('card') || itemTitle.includes('銀行') || itemTitle.includes('信用卡') || itemTitle.includes('金融卡')) {
+                    iconClass = 'fas fa-credit-card';
+                    iconBg = 'bg-blue-500/20 text-blue-400';
+                } else if (itemGroup.includes('筆記') || itemGroup.includes('note') || itemGroup.includes('秘密') || itemTitle.includes('筆記') || itemTitle.includes('備忘錄')) {
+                    iconClass = 'fas fa-sticky-note';
+                    iconBg = 'bg-amber-500/20 text-amber-400';
+                } else if (itemGroup.includes('登入') || itemGroup.includes('帳號') || itemGroup.includes('login') || itemTitle.includes('google') || itemTitle.includes('facebook') || itemTitle.includes('社群')) {
+                    iconClass = 'fas fa-globe';
+                    iconBg = 'bg-emerald-500/20 text-emerald-400';
+                }
+
+                const card = document.createElement('div');
+                card.className = "bg-android-darkSurface rounded-3xl p-4 flex items-center justify-between border border-slate-800/60 hover:border-slate-700 transition-all cursor-pointer";
+                card.innerHTML = `
+                    <div class="flex items-center space-x-3.5 flex-1 min-w-0" onclick="editCredential('${item.id}')">
+                        <div class="w-11 h-11 rounded-2xl ${iconBg} flex items-center justify-center shrink-0">
+                            <i class="${iconClass} text-lg"></i>
+                        </div>
+                        <div class="truncate pr-2">
+                            <h4 class="font-bold text-sm text-slate-200 truncate">${escapeHtml(item.title)}</h4>
+                            <p class="text-xs text-slate-500 truncate mt-0.5">${item.username ? escapeHtml(item.username) : '點擊查看詳細群組內容'}</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-1">
+                        ${item.password ? `
+                            <button onclick="event.stopPropagation(); copyToClipboard('${escapeJs(item.password)}', '密碼')" class="ripple-btn p-3 text-slate-400 hover:text-slate-200 active:text-brand-400 rounded-full">
+                                <i class="fas fa-copy"></i>
+                            </button>
+                        ` : ''}
+                        <button onclick="event.stopPropagation(); deleteCredential('${item.id}')" class="ripple-btn p-3 text-slate-500 hover:text-rose-400 rounded-full">
+                            <i class="fas fa-trash-alt"></i>
+                        </button>
+                    </div>
+                `;
+                listContainer.appendChild(card);
+            });
+        }
+
+        function escapeHtml(string) {
+            return String(string).replace(/[&<>"']/g, function (s) {
+                return {
+                    "&": "&amp;",
+                    "<": "&lt;",
+                    ">": "&gt;",
+                    '"': '&quot;',
+                    "'": '&#39;'
+                }[s];
+            });
+        }
+
+        function escapeJs(string) {
+            return String(string).replace(/'/g, "\\'").replace(/"/g, '\\"');
+        }
+
+        function copyToClipboard(text, label = "內容") {
+            const textarea = document.createElement("textarea");
+            textarea.value = text;
+            textarea.style.position = "fixed";
+            document.body.appendChild(textarea);
+            textarea.select();
+            try {
+                document.execCommand("copy");
+                showToast(`已成功複製${label}！`, "success");
+            } catch (err) {
+                showToast("複製失敗，請手動複製", "error");
+            }
+            document.body.removeChild(textarea);
+        }
+
+        // 切換分頁
+        function switchTab(tabId) {
+            activeTab = tabId;
+            
+            document.getElementById('page-vault').classList.add('hidden');
+            document.getElementById('page-generator').classList.add('hidden');
+            document.getElementById('page-tools').classList.add('hidden');
+            
+            document.getElementById(`page-${tabId}`).classList.remove('hidden');
+
+            const tabs = ['vault', 'generator', 'tools'];
+            tabs.forEach(t => {
+                const btn = document.getElementById(`nav-${t}`);
+                const iconDiv = btn.querySelector('div');
+                const span = btn.querySelector('span');
+                if (t === tabId) {
+                    btn.className = "flex flex-col items-center space-y-1 text-brand-500 transition-all";
+                    iconDiv.className = "w-12 h-8 bg-brand-500/20 rounded-full flex items-center justify-center";
+                    span.classList.add('font-bold');
+                    span.classList.remove('font-semibold');
+                } else {
+                    btn.className = "flex flex-col items-center space-y-1 text-slate-400 transition-all";
+                    iconDiv.className = "w-12 h-8 rounded-full flex items-center justify-center";
+                    span.classList.add('font-semibold');
+                    span.classList.remove('font-bold');
+                }
+            });
+
+            if (tabId === 'vault') {
+                document.getElementById('fab-add').classList.remove('hidden');
+            } else {
+                document.getElementById('fab-add').classList.add('hidden');
+            }
+        }
+
+        // ==========================================
+        // 憑證資料處理與模態框 (CRUD)
+        // ==========================================
+
+        function updateGroupSelectDropdown(selectedValue = "") {
+            const select = document.getElementById('item-group');
+            if (!select) return;
+            select.innerHTML = '';
+            
+            if (groups.length === 0) {
+                groups = ['預設群組'];
+            }
+            
+            groups.forEach(gName => {
+                const opt = document.createElement('option');
+                opt.value = gName;
+                opt.innerText = gName;
+                if (gName === selectedValue) {
+                    opt.selected = true;
+                }
+                select.appendChild(opt);
+            });
+        }
+
+        function openAddModal() {
+            document.getElementById('modal-title').innerText = "新增安全憑證";
+            document.getElementById('item-id').value = "";
+            document.getElementById('credential-form').reset();
+            updateGroupSelectDropdown(groups[0] || "預設群組");
+            updateModalFieldsPlaceholder();
+            document.getElementById('credential-modal').classList.remove('hidden');
+        }
+
+        document.getElementById('item-group').addEventListener('change', updateModalFieldsPlaceholder);
+
+        function updateModalFieldsPlaceholder() {
+            const groupName = document.getElementById('item-group').value;
+            const labelUsername = document.getElementById('label-username');
+            const labelPassword = document.getElementById('label-password');
+            
+            if (groupName && (groupName.includes('卡') || groupName.toLowerCase().includes('card'))) {
+                labelUsername.innerText = "卡片號碼 (Card Number)";
+                labelPassword.innerText = "CVV / 安全密碼";
+                document.getElementById('item-username').placeholder = "0000 0000 0000 0000";
+                document.getElementById('item-password').placeholder = "例如 123";
+            } else if (groupName && (groupName.includes('筆記') || groupName.toLowerCase().includes('note'))) {
+                labelUsername.innerText = "參考關聯 (可不填)";
+                labelPassword.innerText = "安全密碼 (可不填)";
+                document.getElementById('item-username').placeholder = "無";
+                document.getElementById('item-password').placeholder = "無";
+            } else {
+                labelUsername.innerText = "使用者名稱 / 帳號";
+                labelPassword.innerText = "密碼";
+                document.getElementById('item-username').placeholder = "example@gmail.com";
+                document.getElementById('item-password').placeholder = "請輸入密碼";
+            }
+        }
+
+        function closeCredentialModal() {
+            document.getElementById('credential-modal').classList.add('hidden');
+        }
+
+        async function saveCredential(e) {
+            e.preventDefault();
+            
+            const id = document.getElementById('item-id').value;
+            const group = document.getElementById('item-group').value;
+            const title = document.getElementById('item-title').value.trim();
+            const username = document.getElementById('item-username').value.trim();
+            const password = document.getElementById('item-password').value;
+            const notes = document.getElementById('item-notes').value.trim();
+
+            if (!group) {
+                showToast("必須為憑證指定群組！", "error");
+                return;
+            }
+
+            if (!title) {
+                showToast("標題為必填欄位", "error");
+                return;
+            }
+
+            if (id) {
+                const idx = vaultItems.findIndex(item => item.id === id);
+                if (idx !== -1) {
+                    vaultItems[idx] = { id, group, title, username, password, notes };
+                }
+            } else {
+                const newItem = {
+                    id: crypto.randomUUID(),
+                    group,
+                    title,
+                    username,
+                    password,
+                    notes
+                };
+                vaultItems.push(newItem);
+            }
+
+            await saveVaultToLocalStorage();
+            renderVault();
+            closeCredentialModal();
+            showToast("憑證已安全儲存", "success");
+        }
+
+        function editCredential(id) {
+            const item = vaultItems.find(item => item.id === id);
+            if (!item) return;
+
+            document.getElementById('modal-title').innerText = "編輯憑證";
+            document.getElementById('item-id').value = item.id;
+            
+            const itemGroup = item.group || (groups[0] || '預設群組');
+            updateGroupSelectDropdown(itemGroup);
+            updateModalFieldsPlaceholder();
+            
+            document.getElementById('item-title').value = item.title;
+            document.getElementById('item-username').value = item.username || "";
+            document.getElementById('item-password').value = item.password || "";
+            document.getElementById('item-notes').value = item.notes || "";
+
+            document.getElementById('credential-modal').classList.remove('hidden');
+        }
+
+        async function deleteCredential(id) {
+            vaultItems = vaultItems.filter(item => item.id !== id);
+            await saveVaultToLocalStorage();
+            renderVault();
+            showToast("憑證已刪除");
+        }
+
+        // ==========================================
+        // 自訂群組管理專屬邏輯 (Modal & Inline Rename)
+        // ==========================================
+
+        function openManageGroupsModal() {
+            editingGroupName = null; // 重置編輯狀態
+            renderManageGroupsList();
+            document.getElementById('groups-modal').classList.remove('hidden');
+        }
+
+        function closeManageGroupsModal() {
+            document.getElementById('groups-modal').classList.add('hidden');
+        }
+
+        // 渲染自訂群組管理清單 (內含原地內嵌式 Inline Input 編輯器)
+        function renderManageGroupsList() {
+            const list = document.getElementById('manage-groups-list');
+            if (!list) return;
+            list.innerHTML = '';
+
+            if (groups.length === 0) {
+                groups = ['預設群組'];
+            }
+
+            groups.forEach((gName, idx) => {
+                const isDefault = (idx === 0);
+                const itemDiv = document.createElement('div');
+                itemDiv.className = "flex items-center justify-between bg-android-darkSurfaceVariant/80 p-3 rounded-2xl border border-slate-800/60 transition-all";
+                
+                if (editingGroupName === gName) {
+                    // 原地渲染編輯欄位
+                    itemDiv.innerHTML = `
+                        <div class="flex items-center space-x-2 flex-1 mr-2">
+                            <input type="text" id="inline-edit-group-input" 
+                                class="w-full bg-android-darkSurface border border-brand-500 rounded-xl px-3 py-1.5 text-xs text-slate-200 focus:outline-none" 
+                                value="${escapeHtml(gName)}" 
+                                onkeydown="handleInlineRenameKey(event, '${escapeJs(gName)}')"
+                            >
+                        </div>
+                        <div class="flex items-center space-x-1 shrink-0">
+                            <button onclick="saveRenameGroupInline('${escapeJs(gName)}')" class="p-2 text-emerald-400 hover:bg-slate-800 rounded-full" title="儲存修改">
+                                <i class="fas fa-check text-xs"></i>
+                            </button>
+                            <button onclick="cancelRenameGroupInline()" class="p-2 text-slate-400 hover:bg-slate-800 rounded-full" title="取消">
+                                <i class="fas fa-times text-xs"></i>
+                            </button>
+                        </div>
+                    `;
+                    list.appendChild(itemDiv);
+                    
+                    // 自動聚焦與全選文字
+                    setTimeout(() => {
+                        const input = document.getElementById('inline-edit-group-input');
+                        if (input) {
+                            input.focus();
+                            input.select();
+                        }
+                    }, 50);
+                } else {
+                    // 正常狀態顯示
+                    itemDiv.innerHTML = `
+                        <span class="text-xs font-semibold text-slate-200 truncate pr-2">
+                            ${escapeHtml(gName)} ${isDefault ? '<span class="text-[9px] bg-brand-500/20 text-brand-400 px-2 py-0.5 rounded-full ml-1.5">預設群組</span>' : ''}
+                        </span>
+                        <div class="flex items-center space-x-1 shrink-0">
+                            <button onclick="startRenameGroupInline('${escapeJs(gName)}')" class="p-2 text-slate-400 hover:text-brand-400 transition-all rounded-full hover:bg-slate-800" title="修改名稱">
+                                <i class="fas fa-edit text-xs"></i>
+                            </button>
+                            ${!isDefault ? `
+                                <button onclick="deleteGroup('${escapeJs(gName)}')" class="p-2 text-slate-500 hover:text-rose-400 transition-all rounded-full hover:bg-slate-800" title="刪除群組">
+                                    <i class="fas fa-trash-alt text-xs"></i>
+                                </button>
+                            ` : ''}
+                        </div>
+                    `;
+                    list.appendChild(itemDiv);
+                }
+            });
+        }
+
+        // 啟動原地編輯狀態
+        function startRenameGroupInline(gName) {
+            editingGroupName = gName;
+            renderManageGroupsList();
+        }
+
+        // 取消原地編輯狀態
+        function cancelRenameGroupInline() {
+            editingGroupName = null;
+            renderManageGroupsList();
+        }
+
+        // 鍵盤輔助按鍵控管
+        function handleInlineRenameKey(event, oldName) {
+            if (event.key === 'Enter') {
+                saveRenameGroupInline(oldName);
+            } else if (event.key === 'Escape') {
+                cancelRenameGroupInline();
+            }
+        }
+
+        // 儲存重命名變更
+        async function saveRenameGroupInline(oldName) {
+            const input = document.getElementById('inline-edit-group-input');
+            if (!input) return;
+            
+            const newName = input.value.trim();
+            if (!newName) {
+                showToast("群組名稱不能為空", "error");
+                return;
+            }
+            if (newName === oldName) {
+                cancelRenameGroupInline();
+                return;
+            }
+            if (groups.includes(newName)) {
+                showToast("此群組名稱已存在", "error");
+                return;
+            }
+
+            const idx = groups.indexOf(oldName);
+            if (idx !== -1) {
+                groups[idx] = newName;
+            }
+
+            vaultItems.forEach(item => {
+                if (item.group === oldName) {
+                    item.group = newName;
+                }
+            });
+
+            if (groupFilter === oldName) {
+                groupFilter = newName;
+            }
+
+            editingGroupName = null; // 重置狀態
+            
+            await saveVaultToLocalStorage();
+            renderManageGroupsList();
+            renderGroupFilterTabs();
+            renderVault();
+            updateGroupSelectDropdown(newName);
+            showToast(`已成功將群組重命名為 "${newName}"`, "success");
+        }
+
+        // 在管理模組中新增群組
+        function addGroup() {
+            const input = document.getElementById('new-group-name-input');
+            const name = input.value.trim();
+            if (!name) {
+                showToast("群組名稱不能為空白", "error");
+                return;
+            }
+            if (groups.includes(name)) {
+                showToast("此群組名稱已存在", "error");
+                return;
+            }
+            groups.push(name);
+            input.value = '';
+            
+            saveVaultToLocalStorage();
+            renderManageGroupsList();
+            renderGroupFilterTabs();
+            updateGroupSelectDropdown(name);
+            showToast(`已成功新增群組 "${name}"`, "success");
+        }
+
+        // 安全地刪除群組並將項目遷移至第一個預設群組
+        async function deleteGroup(gName) {
+            if (groups.length <= 1 || gName === groups[0]) return;
+
+            const defaultGroup = groups[0];
+            let migratedCount = 0;
+            
+            vaultItems.forEach(item => {
+                if (item.group === gName) {
+                    item.group = defaultGroup;
+                    migratedCount++;
+                }
+            });
+
+            groups = groups.filter(g => g !== gName);
+            
+            if (groupFilter === gName) {
+                groupFilter = 'all';
+            }
+
+            await saveVaultToLocalStorage();
+            renderManageGroupsList();
+            renderGroupFilterTabs();
+            renderVault();
+            updateGroupSelectDropdown();
+            
+            let message = `已刪除群組 "${gName}"`;
+            if (migratedCount > 0) {
+                message += `，該群組內的 ${migratedCount} 個項目已安全轉移至 "${defaultGroup}"`;
+            }
+            showToast(message, "info");
+        }
+
+        // ==========================================
+        // 密碼產生器 (Password Generator)
+        // ==========================================
+
+        function generatePassword(length, useUpper, useLower, useNumbers, useSymbols) {
+            const upperChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+            const lowerChars = "abcdefghijklmnopqrstuvwxyz";
+            const numChars = "0123456789";
+            const symbolChars = "!@#$%^&*()_+-=[]{}|;:,.<>?";
+
+            let charPool = "";
+            let guaranteedChars = [];
+
+            if (useUpper) {
+                charPool += upperChars;
+                guaranteedChars.push(upperChars[Math.floor(Math.random() * upperChars.length)]);
+            }
+            if (useLower) {
+                charPool += lowerChars;
+                guaranteedChars.push(lowerChars[Math.floor(Math.random() * lowerChars.length)]);
+            }
+            if (useNumbers) {
+                charPool += numChars;
+                guaranteedChars.push(numChars[Math.floor(Math.random() * numChars.length)]);
+            }
+            if (useSymbols) {
+                charPool += symbolChars;
+                guaranteedChars.push(symbolChars[Math.floor(Math.random() * symbolChars.length)]);
+            }
+
+            if (charPool === "") return "請至少勾選一種類型的字元";
+
+            let result = "";
+            for (let i = 0; i < guaranteedChars.length; i++) {
+                result += guaranteedChars[i];
+            }
+
+            for (let i = result.length; i < length; i++) {
+                const randIndex = Math.floor(Math.random() * charPool.length);
+                result += charPool[randIndex];
+            }
+
+            return result.split('').sort(() => 0.5 - Math.random()).join('');
+        }
+
+        function regeneratePassword() {
+            const length = parseInt(document.getElementById('length-slider').value);
+            const useUpper = document.getElementById('chk-uppercase').checked;
+            const useLower = document.getElementById('chk-lowercase').checked;
+            const useNumbers = document.getElementById('chk-numbers').checked;
+            const useSymbols = document.getElementById('chk-symbols').checked;
+
+            const pwd = generatePassword(length, useUpper, useLower, useNumbers, useSymbols);
+            document.getElementById('generated-password-display').innerText = pwd;
+            
+            const badge = document.getElementById('gen-strength-badge');
+            if (length < 8 || (!useUpper && !useLower && !useNumbers && !useSymbols)) {
+                badge.innerText = "非常脆弱";
+                badge.className = "text-[10px] px-2.5 py-1 rounded-full font-bold bg-rose-500/20 text-rose-400";
+            } else if (length < 12) {
+                badge.innerText = "中等安全";
+                badge.className = "text-[10px] px-2.5 py-1 rounded-full font-bold bg-amber-500/20 text-amber-400";
+            } else {
+                badge.innerText = "超強安全";
+                badge.className = "text-[10px] px-2.5 py-1 rounded-full font-bold bg-emerald-500/20 text-emerald-400";
+            }
+        }
+
+        function updateGeneratorSettings() {
+            document.getElementById('length-val').innerText = document.getElementById('length-slider').value;
+            regeneratePassword();
+        }
+
+        function copyGeneratedPassword() {
+            const pwd = document.getElementById('generated-password-display').innerText;
+            copyToClipboard(pwd, "隨機密碼");
+        }
+
+        function fillWithGeneratedPassword() {
+            const length = 16;
+            const pwd = generatePassword(length, true, true, true, true);
+            document.getElementById('item-password').value = pwd;
+            showToast("已成功帶入強安全密碼！", "success");
+        }
+
+        // ==========================================
+        // 備份匯出、匯入與刪除
+        // ==========================================
+
+        function exportEncryptedVault() {
+            const savedData = localStorage.getItem('cipherkeep_encrypted_vault');
+            if (!savedData) {
+                showToast("無任何密碼資料可匯出", "error");
+                return;
+            }
+
+            const blob = new Blob([savedData], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `cipherkeep_backup_${new Date().toISOString().slice(0,10)}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            showToast("保險庫備份已匯出 (高度加密)", "success");
+        }
+
+        function importEncryptedVault(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const content = e.target.result;
+                    const parsed = JSON.parse(content);
+                    if (parsed.salt && parsed.iv && parsed.ciphertext) {
+                        localStorage.setItem('cipherkeep_encrypted_vault', content);
+                        showToast("加密檔案已讀入，請使用原備份時的主密碼重新登入解鎖！", "success");
+                        setTimeout(() => {
+                            location.reload();
+                        }, 2500);
+                    } else {
+                        showToast("無效的保險庫備份格式", "error");
+                    }
+                } catch (err) {
+                    showToast("讀取檔案失敗，請確保是合規的 JSON 檔案", "error");
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function confirmClearVault() {
+            document.getElementById('danger-modal').classList.remove('hidden');
+        }
+
+        function closeDangerModal() {
+            document.getElementById('danger-modal').classList.add('hidden');
+        }
+
+        function clearVaultAndWipe() {
+            localStorage.removeItem('cipherkeep_encrypted_vault');
+            closeDangerModal();
+            showToast("保險庫資料已徹底抹除", "success");
+            setTimeout(() => {
+                location.reload();
+            }, 1000);
+        }
+
+        // ==========================================
+        // PWA 核心規格整合
+        // ==========================================
+        let deferredPrompt = null;
+
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            
+            const installBadge = document.getElementById('pwa-install-badge');
+            if (installBadge) installBadge.classList.remove('hidden');
+            console.log('PWA 安裝提示已就緒');
+        });
+
+        async function triggerPwaInstallation() {
+            if (!deferredPrompt) {
+                showToast("此環境不支援 PWA 安裝，或您已將其下載為本機 App 執行", "info");
+                return;
+            }
+            deferredPrompt.prompt();
+            const { outcome } = await deferredPrompt.userChoice;
+            console.log(`使用者安裝行為決定: ${outcome}`);
+            
+            deferredPrompt = null;
+            
+            const installBadge = document.getElementById('pwa-install-badge');
+            if (installBadge) installBadge.classList.add('hidden');
+        }
+
+        window.addEventListener('appinstalled', () => {
+            showToast("安裝完成！CipherKeep 已成功加入您的系統", "success");
+        });
+
+        // 嘗試註冊 Service Worker (加強協定檢查防範 Sandbox 環境報錯)
+        const isStandardSecureProto = location.protocol === 'http:' || location.protocol === 'https:';
+        const isBlobOrSandbox = location.href.startsWith('blob:') || location.protocol === 'blob:';
+
+        if ('serviceWorker' in navigator && isStandardSecureProto && !isBlobOrSandbox) {
+            window.addEventListener('load', () => {
+                try {
+                    navigator.serviceWorker.register('./sw.js')
+                        .then(reg => {
+                            console.log('Service Worker 註冊成功:', reg);
+                        })
+                        .catch(err => {
+                            console.log('Service Worker 註冊被攔截 (預覽或無 sw.js 檔案環境):', err.message);
+                        });
+                } catch (syncErr) {
+                    console.log('瀏覽器阻止 Service Worker 註冊:', syncErr.message);
+                }
+            });
+        }
+    </script>
+</body>
+</html>
