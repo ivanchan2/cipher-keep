@@ -1,5 +1,5 @@
 // 離線快取控制核心
-const CACHE_NAME = 'cipherkeep-offline-cache-v5';
+const CACHE_NAME = 'cipherkeep-offline-cache-v6';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
@@ -8,6 +8,9 @@ const ASSETS_TO_CACHE = [
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/apple-touch-icon.png',
+  './icons/icon-maskable-512.png',
+  './icons/favicon-32.png',
+  './icons/icon.svg',
   'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css',
   // Font Awesome 圖示字型檔（CSS 內以相對路徑引用，需預先快取，否則離線時圖示會消失）
   'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/webfonts/fa-solid-900.woff2',
