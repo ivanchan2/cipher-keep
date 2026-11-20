@@ -17,7 +17,9 @@ CipherKeep 的目標是**繞過應用程式商店，讓任何人都能在自己�
 
 ## ✨ 功能特色
 
-- 🔐 **本機端加密**：採用 AES-GCM 256 位元加密，金鑰由主密碼經 PBKDF2-SHA256（80,000 次迭代）推導而來。
+- 🔐 **本機端加密**：採用 AES-GCM 256 位元加密，金鑰由主密碼經 PBKDF2-SHA256（600,000 次迭代，符合 OWASP 建議）推導而來。
+- ⏱️ **自動上鎖**：閒置 5 分鐘，或離開 App 超過 1 分鐘，就會自動上鎖。
+- 📋 **剪貼簿自動清除**：複製密碼 30 秒後自動清空剪貼簿。
 - 📴 **完全離線**：Service Worker 會快取所有資源，首次開啟後不再需要網路。
 - 📱 **可安裝為 App**：加入主畫面後會以獨立視窗開啟，不會顯示瀏覽器網址列。
 - 🗂️ **自訂群組**：可自由新增、重新命名、刪除分類，並用標籤快速篩選。
@@ -45,10 +47,11 @@ CipherKeep 的目標是**繞過應用程式商店，讓任何人都能在自己�
 
 ### 部署
 
-只要把以下三個檔案放在同一個目錄，上傳到任何靜態網站空間即可（例如 GitHub Pages、Netlify、Cloudflare Pages）：
+只要把以下四個檔案放在同一個目錄，上傳到任何靜態網站空間即可（例如 GitHub Pages、Netlify、Cloudflare Pages）：
 
 ```
 index.html
+tailwind.css
 manifest.json
 sw.js
 ```
@@ -76,13 +79,17 @@ python -m http.server 8000
 1. **建立保險庫**：第一次開啟時設定主密碼（至少 6 個字元），並再輸入一次確認。
 2. **解鎖**：之後每次開啟，輸入主密碼即可解鎖。
 3. **新增項目**：點選右下角的 `+`，填寫群組、標題、帳號、密碼與備註。
-4. **上鎖**：點選右上角的鎖頭圖示，程式會立即清除記憶體中的資料。
+4. **上鎖**：點選右上角的鎖頭圖示，程式會立即清除記憶體與畫面上的資料。閒置或離開 App 一段時間後也會自動上鎖。
 5. **備份**：到「設定備份」分頁匯出加密保險庫，並把檔案存放在安全的地方。
 
 ## 🛡️ 安全性說明
 
 - 加密後的資料存放在瀏覽器的 `localStorage`（鍵名為 `cipherkeep_encrypted_vault`）。
-- 每次儲存都會重新產生隨機的 salt（16 位元組）與 IV（12 位元組）。
+- 每個保險庫使用隨機的 salt（16 位元組），每次儲存都會產生新的 IV（12 位元組）。
+- 舊版保險庫（80,000 次迭代）在解鎖時會自動升級為 600,000 次，舊的備份檔也仍然可以匯入。
+- 頁面**不載入任何第三方腳本**：Tailwind 已預先編譯成本地 CSS，Font Awesome 以 SRI 驗證檔案完整性。
+- 內容安全政策（CSP）禁止頁面對外連線，即使外部樣式遭竄改，也無法把資料傳出去。
+- 「清除保險庫」只會刪除 CipherKeep 自己的資料，不影響同網域的其他網站（例如同一個 GitHub Pages 帳號下的其他專案）。
 - 匯出的備份檔同樣經過加密，必須使用原本的主密碼才能解開。
 - **忘記主密碼就無法找回任何資料**：本程式沒有後門，也沒有重設機制。
 - 清除瀏覽器的網站資料，或移除已安裝的 App，都會一併刪除保險庫。**請務必定期匯出備份。**
@@ -91,18 +98,26 @@ python -m http.server 8000
 
 | 項目 | 技術 |
 | --- | --- |
-| 介面 | HTML + [Tailwind CSS](https://tailwindcss.com/)（CDN） |
-| 圖示 | Font Awesome 6.4.0 |
+| 介面 | HTML + [Tailwind CSS](https://tailwindcss.com/) v3（預先編譯為本地 CSS） |
+| 圖示 | Font Awesome 6.4.0（SRI 驗證） |
 | 字型 | Inter、Noto Sans TC |
 | 加密 | Web Crypto API（PBKDF2 + AES-GCM） |
 | 離線與安裝 | PWA：Web App Manifest + Service Worker |
 
 ```
 cipher-keep/
-├── index.html      # 應用程式主體（介面與所有邏輯）
-├── manifest.json   # PWA 安裝設定
-└── sw.js           # 離線快取用的 Service Worker
+├── index.html          # 應用程式主體（介面與所有邏輯）
+├── tailwind.css        # 預先編譯的樣式
+├── tailwind.config.js  # 重新產生 tailwind.css 用的設定
+├── manifest.json       # PWA 安裝設定
+└── sw.js               # 離線快取用的 Service Worker
 ```
+
+> 修改介面的 Tailwind class 後，需要重新產生 `tailwind.css`：
+>
+> ```powershell
+> npx tailwindcss@3 -c tailwind.config.js -o tailwind.css --minify
+> ```
 
 ## ⚠️ 免責聲明
 

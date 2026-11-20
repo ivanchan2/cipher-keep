@@ -13,39 +13,21 @@
     <!-- 連結實體 PWA 設定檔 -->
     <link rel="manifest" href="./manifest.json">
 
+    <!--
+        內容安全政策 (CSP)：不載入任何第三方腳本，並禁止頁面對外連線 (connect-src 'self')，
+        即使樣式資源遭竄改也無法把資料傳出去。新增外部資源時需同步調整。
+    -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; font-src https://cdnjs.cloudflare.com https://fonts.gstatic.com; img-src 'self' data: https://placehold.co; connect-src 'self'; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+
     <title>CipherKeep - 密碼守護者</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Tailwind 已預先產生為本地檔案 (設定見 tailwind.config.js)，不再從 CDN 載入執行腳本 -->
+    <link rel="stylesheet" href="./tailwind.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+        integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw=="
+        crossorigin="anonymous" referrerpolicy="no-referrer">
     <link
         href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+TC:wght@300;400;500;700&display=swap"
         rel="stylesheet">
-    <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {
-                    fontFamily: {
-                        sans: ['Inter', 'Noto Sans TC', 'sans-serif'],
-                    },
-                    colors: {
-                        brand: {
-                            50: '#f5f3ff',
-                            100: '#ede9fe',
-                            500: '#8b5cf6',
-                            600: '#7c3aed',
-                            700: '#6d28d9',
-                            900: '#4c1d95',
-                        },
-                        android: {
-                            darkBg: '#0f0e13',
-                            darkSurface: '#18171d',
-                            darkSurfaceVariant: '#24222a',
-                        }
-                    }
-                }
-            }
-        }
-    </script>
     <style>
         .no-scrollbar::-webkit-scrollbar {
             display: none;
@@ -314,6 +296,7 @@
                         <p>要讓密碼守護者支援手機**完全斷網（離線）**開啟，您必須將實體設定檔上傳至您的伺服器根目錄。請依照以下步驟操作：</p>
                         <ol class="list-decimal pl-4 space-y-2 text-slate-400">
                             <li>將此網頁檔案下載並命名為 <code class="text-brand-300 font-mono">index.html</code></li>
+                            <li>在伺服器同目錄下放置樣式檔 <code class="text-brand-300 font-mono">tailwind.css</code>。</li>
                             <li>在伺服器同目錄下新增一個 <code class="text-brand-300 font-mono">manifest.json</code> 檔案。</li>
                             <li>在伺服器同目錄下新增一個 <code class="text-brand-300 font-mono">sw.js</code> 檔案。</li>
                             <li>請確保網址為安全的 <code
@@ -536,7 +519,7 @@
         };
 
         function initApp() {
-            const hasSavedData = localStorage.getItem('cipherkeep_encrypted_vault');
+            const hasSavedData = localStorage.getItem(VAULT_STORAGE_KEY);
             if (hasSavedData) {
                 document.getElementById('master-password-label').innerText = "輸入主密碼解鎖保險庫";
                 document.getElementById('btn-submit-master').innerText = "解鎖保險庫";
@@ -641,7 +624,17 @@
         // ==========================================
         // 核心加密引擎 (Web Crypto API)
         // ==========================================
-        async function deriveKey(password, salt) {
+        const VAULT_STORAGE_KEY = 'cipherkeep_encrypted_vault';
+        const PBKDF2_ITERATIONS = 600000;         // OWASP 2023 建議值 (PBKDF2-HMAC-SHA256)
+        const LEGACY_PBKDF2_ITERATIONS = 80000;   // 舊格式 (未記錄 iter 欄位) 使用的迭代次數
+        const MAX_PBKDF2_ITERATIONS = 10000000;   // 防止惡意備份檔以極大迭代次數卡死頁面
+
+        // 解鎖期間保存在記憶體的金鑰與 salt：每次儲存只換新的 IV，不必重跑 PBKDF2
+        let vaultKey = null;
+        let vaultSalt = null;
+        let vaultIterations = null;
+
+        async function deriveKey(password, salt, iterations) {
             const encoder = new TextEncoder();
             const passwordBytes = encoder.encode(password);
             const baseKey = await window.crypto.subtle.importKey(
@@ -651,7 +644,7 @@
                 {
                     name: "PBKDF2",
                     salt: salt,
-                    iterations: 80000,
+                    iterations: iterations,
                     hash: "SHA-256"
                 },
                 baseKey,
@@ -679,82 +672,125 @@
             return bytes.buffer;
         }
 
-        async function encryptData(plaintext, password) {
-            const encoder = new TextEncoder();
-            const salt = window.crypto.getRandomValues(new Uint8Array(16));
+        // 以已推導的金鑰加密；輸出格式 v2 會記錄迭代次數，日後可安全調整
+        async function encryptWithKey(plaintext, key, salt, iterations) {
             const iv = window.crypto.getRandomValues(new Uint8Array(12));
-            const key = await deriveKey(password, salt);
             const ciphertextBuffer = await window.crypto.subtle.encrypt(
                 { name: "AES-GCM", iv: iv },
                 key,
-                encoder.encode(plaintext)
+                new TextEncoder().encode(plaintext)
             );
             return {
+                v: 2,
+                iter: iterations,
                 salt: bufferToBase64(salt),
                 iv: bufferToBase64(iv),
                 ciphertext: bufferToBase64(ciphertextBuffer)
             };
         }
 
-        async function decryptData(encryptedObj, password) {
+        // 解密保險庫物件（相容沒有 iter 欄位的舊格式）
+        // 成功回傳 { text, key, salt, iterations }，主密碼錯誤或格式錯誤回傳 null
+        async function decryptVault(encryptedObj, password) {
             try {
+                const iterations = encryptedObj.iter === undefined ? LEGACY_PBKDF2_ITERATIONS : encryptedObj.iter;
+                if (!Number.isInteger(iterations) || iterations < 1 || iterations > MAX_PBKDF2_ITERATIONS) {
+                    return null;
+                }
                 const salt = new Uint8Array(base64ToBuffer(encryptedObj.salt));
                 const iv = new Uint8Array(base64ToBuffer(encryptedObj.iv));
                 const ciphertext = base64ToBuffer(encryptedObj.ciphertext);
-                const key = await deriveKey(password, salt);
+                const key = await deriveKey(password, salt, iterations);
                 const decryptedBuffer = await window.crypto.subtle.decrypt(
                     { name: "AES-GCM", iv: iv },
                     key,
                     ciphertext
                 );
-                return new TextDecoder().decode(decryptedBuffer);
+                return { text: new TextDecoder().decode(decryptedBuffer), key, salt, iterations };
             } catch (err) {
                 console.error("解密失敗:", err);
                 return null;
             }
         }
 
+        // 產生新的 salt 並以目前標準的迭代次數推導金鑰
+        async function setNewVaultKey(password) {
+            vaultSalt = window.crypto.getRandomValues(new Uint8Array(16));
+            vaultIterations = PBKDF2_ITERATIONS;
+            vaultKey = await deriveKey(password, vaultSalt, vaultIterations);
+        }
+
         // 解鎖保險庫主邏輯
         async function handleMasterPasswordSubmit() {
+            const submitBtn = document.getElementById('btn-submit-master');
+            if (submitBtn.disabled) return;
+
             const passwordInput = document.getElementById('master-password-input').value;
             const confirmInput = document.getElementById('confirm-password-input').value;
-            const hasSavedData = localStorage.getItem('cipherkeep_encrypted_vault');
+            const hasSavedData = localStorage.getItem(VAULT_STORAGE_KEY);
 
             if (!passwordInput || passwordInput.length < 6) {
                 showToast("主密碼長度至少需 6 個字元", "error");
                 return;
             }
+            if (!hasSavedData && passwordInput !== confirmInput) {
+                showToast("兩次輸入的主密碼不一致", "error");
+                return;
+            }
 
-            if (!hasSavedData) {
-                if (passwordInput !== confirmInput) {
-                    showToast("兩次輸入的主密碼不一致", "error");
+            // 金鑰推導需要一點時間，先鎖住按鈕避免重複送出
+            const originalText = submitBtn.innerText;
+            submitBtn.disabled = true;
+            submitBtn.innerText = hasSavedData ? "解鎖中..." : "建立中...";
+
+            try {
+                if (!hasSavedData) {
+                    masterPassword = passwordInput;
+                    vaultItems = [];
+                    groups = ['預設群組'];
+                    await setNewVaultKey(passwordInput);
+                    await saveVaultToLocalStorage();
+                    showToast("保險庫建立成功！請妥善保存主密碼", "success");
+                    enterVault();
                     return;
                 }
-                masterPassword = passwordInput;
-                vaultItems = [];
-                groups = ['預設群組'];
-                await saveVaultToLocalStorage();
-                showToast("保險庫建立成功！請妥善保存主密碼", "success");
-                enterVault();
-            } else {
-                const encryptedPayload = JSON.parse(hasSavedData);
-                const decryptedText = await decryptData(encryptedPayload, passwordInput);
 
-                if (decryptedText !== null) {
-                    masterPassword = passwordInput;
-                    try {
-                        const parsed = JSON.parse(decryptedText);
-                        vaultItems = parsed.items || [];
-                        groups = parsed.groups || ['預設群組'];
-                        if (groups.length === 0) groups = ['預設群組'];
-                    } catch (e) {
-                        vaultItems = [];
-                        groups = ['預設群組'];
-                    }
-                    showToast("解鎖成功", "success");
-                    enterVault();
-                } else {
+                let encryptedPayload = null;
+                try { encryptedPayload = JSON.parse(hasSavedData); } catch (e) { encryptedPayload = null; }
+                const result = encryptedPayload ? await decryptVault(encryptedPayload, passwordInput) : null;
+                if (!result) {
                     showToast("主密碼錯誤，解鎖失敗", "error");
+                    return;
+                }
+
+                let parsed;
+                try {
+                    parsed = JSON.parse(result.text);
+                } catch (e) {
+                    showToast("保險庫資料損毀，無法讀取", "error");
+                    return;
+                }
+
+                masterPassword = passwordInput;
+                vaultItems = Array.isArray(parsed.items) ? parsed.items : [];
+                groups = Array.isArray(parsed.groups) && parsed.groups.length > 0 ? parsed.groups : ['預設群組'];
+
+                if (result.iterations < PBKDF2_ITERATIONS) {
+                    // 舊版保險庫：以新的迭代次數重新加密，自動升級
+                    await setNewVaultKey(passwordInput);
+                    await saveVaultToLocalStorage();
+                    showToast("解鎖成功，已自動升級加密強度", "success");
+                } else {
+                    vaultKey = result.key;
+                    vaultSalt = result.salt;
+                    vaultIterations = result.iterations;
+                    showToast("解鎖成功", "success");
+                }
+                enterVault();
+            } finally {
+                submitBtn.disabled = false;
+                if (submitBtn.innerText === "解鎖中..." || submitBtn.innerText === "建立中...") {
+                    submitBtn.innerText = originalText;
                 }
             }
         }
@@ -767,25 +803,94 @@
             regeneratePassword();
         }
 
-        function lockVault() {
+        function isVaultUnlocked() {
+            return vaultKey !== null;
+        }
+
+        function lockVault(message = "保險庫已安全上鎖") {
+            // 若確認視窗正開著，視同取消，讓等待中的操作結束
+            if (!document.getElementById('confirm-modal').classList.contains('hidden')) {
+                document.getElementById('confirm-cancel-btn').click();
+            }
+
             masterPassword = null;
+            vaultKey = null;
+            vaultSalt = null;
+            vaultIterations = null;
             vaultItems = [];
             groups = ['預設群組'];
             editingGroupName = null;
+            groupFilter = 'all';
+
+            // 清除畫面上可能殘留的敏感資料
+            document.getElementById('credential-form').reset();
+            document.getElementById('item-id').value = "";
+            document.getElementById('item-password').type = "password";
+            document.getElementById('modal-toggle-icon').className = "far fa-eye";
+            document.getElementById('vault-list').innerHTML = "";
+            document.getElementById('group-tabs-container').innerHTML = "";
+            document.getElementById('manage-groups-list').innerHTML = "";
+            document.getElementById('search-input').value = "";
+            document.getElementById('generated-password-display').innerText = "";
+            ['credential-modal', 'groups-modal', 'danger-modal'].forEach(id => {
+                document.getElementById(id).classList.add('hidden');
+            });
+
             document.getElementById('master-password-input').value = "";
             document.getElementById('confirm-password-input').value = "";
+            switchTab('vault');
             document.getElementById('app-content').classList.add('hidden');
             document.getElementById('screen-lock').classList.remove('hidden');
             initApp();
-            showToast("保險庫已安全上鎖");
+            requestClipboardClear();
+            showToast(message);
         }
 
         async function saveVaultToLocalStorage() {
-            if (!masterPassword) return;
+            if (!isVaultUnlocked()) return;
             const payload = { items: vaultItems, groups: groups };
-            const encryptedPayload = await encryptData(JSON.stringify(payload), masterPassword);
-            localStorage.setItem('cipherkeep_encrypted_vault', JSON.stringify(encryptedPayload));
+            const encryptedPayload = await encryptWithKey(JSON.stringify(payload), vaultKey, vaultSalt, vaultIterations);
+            localStorage.setItem(VAULT_STORAGE_KEY, JSON.stringify(encryptedPayload));
         }
+
+        // ==========================================
+        // 自動上鎖：閒置 5 分鐘，或離開 App 超過 1 分鐘
+        // ==========================================
+        const AUTO_LOCK_IDLE_MS = 5 * 60 * 1000;
+        const AUTO_LOCK_HIDDEN_MS = 60 * 1000;
+        let lastActivityAt = Date.now();
+        let hiddenAt = null;
+
+        function checkAutoLock() {
+            if (!isVaultUnlocked()) return;
+            const now = Date.now();
+            if (hiddenAt !== null && now - hiddenAt >= AUTO_LOCK_HIDDEN_MS) {
+                lockVault("離開 App 超過 1 分鐘，已自動上鎖");
+            } else if (now - lastActivityAt >= AUTO_LOCK_IDLE_MS) {
+                lockVault("閒置超過 5 分鐘，已自動上鎖");
+            }
+        }
+
+        ['pointerdown', 'keydown', 'touchend', 'wheel'].forEach(evt => {
+            document.addEventListener(evt, () => {
+                lastActivityAt = Date.now();
+                tryClearClipboard(); // 使用者互動時瀏覽器才允許寫入剪貼簿
+            }, { capture: true, passive: true });
+        });
+
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'hidden') {
+                hiddenAt = Date.now();
+                setTimeout(checkAutoLock, AUTO_LOCK_HIDDEN_MS + 500);
+            } else {
+                checkAutoLock();
+                hiddenAt = null;
+                lastActivityAt = Date.now();
+                tryClearClipboard();
+            }
+        });
+
+        setInterval(checkAutoLock, 10 * 1000);
 
         // ==========================================
         // 介面渲染與操作功能 (DOM & Filters)
@@ -1225,7 +1330,7 @@
         // 安全資料備份 (JSON Cryptographic Export)
         // ==========================================
         function exportEncryptedVault() {
-            const savedData = localStorage.getItem('cipherkeep_encrypted_vault');
+            const savedData = localStorage.getItem(VAULT_STORAGE_KEY);
             if (!savedData) { showToast("無任何密碼資料可匯出", "error"); return; }
             const blob = new Blob([savedData], { type: "application/json" });
             const url = URL.createObjectURL(blob);
@@ -1260,9 +1365,9 @@
 
             // 先嘗試用目前的主密碼解密，確認備份內容
             let payload = null;
-            const decrypted = masterPassword ? await decryptData(parsed, masterPassword) : null;
+            const decrypted = masterPassword ? await decryptVault(parsed, masterPassword) : null;
             if (decrypted !== null) {
-                try { payload = JSON.parse(decrypted); } catch (e) { payload = null; }
+                try { payload = JSON.parse(decrypted.text); } catch (e) { payload = null; }
             }
 
             if (payload) {
@@ -1288,7 +1393,7 @@
                 );
                 if (!confirmed) return;
 
-                localStorage.setItem('cipherkeep_encrypted_vault', content);
+                localStorage.setItem(VAULT_STORAGE_KEY, content);
                 showToast("備份已匯入，請輸入該備份的主密碼解鎖", "success");
                 setTimeout(() => location.reload(), 2000);
             }
@@ -1319,7 +1424,8 @@
         function confirmClearVault() { document.getElementById('danger-modal').classList.remove('hidden'); }
         function closeDangerModal() { document.getElementById('danger-modal').classList.add('hidden'); }
         function clearVaultAndWipe() {
-            localStorage.clear();
+            // 只刪除本 App 的資料；GitHub Pages 等同網域的其他專案共用 localStorage，不可用 clear()
+            localStorage.removeItem(VAULT_STORAGE_KEY);
             closeDangerModal();
             showToast("資料已徹底抹除", "success");
             setTimeout(() => location.reload(), 1000);
@@ -1359,19 +1465,58 @@
             return String(str).replace(/[&<>"']/g, s => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': '&quot;', "'": '&#39;' }[s]));
         }
 
-        function copyToClipboard(text, label = "內容") {
-            const textarea = document.createElement("textarea");
-            textarea.value = text;
-            textarea.style.position = "fixed";
-            document.body.appendChild(textarea);
-            textarea.select();
-            try {
-                document.execCommand("copy");
-                showToast(`已成功複製${label}！`, "success");
-            } catch (err) {
-                showToast("複製失敗", "error");
+        // ==========================================
+        // 剪貼簿：複製後 30 秒自動清除
+        // ==========================================
+        const CLIPBOARD_CLEAR_MS = 30 * 1000;
+        let clipboardClearTimer = null;
+        let clipboardState = null; // null：無需處理；'pending'：等待倒數；'due'：該清除了
+
+        function execCopy(text) {
+            let ok = false;
+            const handler = (e) => {
+                e.clipboardData.setData('text/plain', text);
+                e.preventDefault();
+                ok = true;
+            };
+            document.addEventListener('copy', handler);
+            try { document.execCommand('copy'); } catch (err) { ok = false; }
+            document.removeEventListener('copy', handler);
+            return ok;
+        }
+
+        async function writeClipboard(text) {
+            if (navigator.clipboard && window.isSecureContext) {
+                try {
+                    await navigator.clipboard.writeText(text);
+                    return true;
+                } catch (err) { /* 改用備援方式 */ }
             }
-            document.body.removeChild(textarea);
+            return execCopy(text);
+        }
+
+        async function copyToClipboard(text, label = "內容") {
+            if (!(await writeClipboard(text))) {
+                showToast("複製失敗", "error");
+                return;
+            }
+            showToast(`已複製${label}，30 秒後自動清除剪貼簿`, "success");
+            clipboardState = 'pending';
+            clearTimeout(clipboardClearTimer);
+            clipboardClearTimer = setTimeout(requestClipboardClear, CLIPBOARD_CLEAR_MS);
+        }
+
+        function requestClipboardClear() {
+            if (clipboardState === null) return;
+            clearTimeout(clipboardClearTimer);
+            clipboardState = 'due';
+            tryClearClipboard();
+        }
+
+        // 頁面在背景或沒有使用者互動時瀏覽器會拒絕寫入，失敗就保留狀態，等下次回到頁面或點擊時再清
+        async function tryClearClipboard() {
+            if (clipboardState !== 'due') return;
+            if (await writeClipboard('')) clipboardState = null;
         }
 
         // ==========================================
