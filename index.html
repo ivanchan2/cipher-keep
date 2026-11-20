@@ -465,6 +465,28 @@
         </div>
     </div>
 
+    <!-- 4-1. 通用確認視窗 (由 showConfirm() 控制) -->
+    <div id="confirm-modal"
+        class="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm hidden flex items-center justify-center p-6">
+        <div class="bg-android-darkSurface max-w-sm w-full rounded-[28px] p-6 border border-rose-900/50 space-y-4">
+            <div class="text-rose-500 text-3xl text-center">
+                <i class="fas fa-triangle-exclamation"></i>
+            </div>
+            <h3 id="confirm-title" class="text-lg font-bold text-slate-100 text-center"></h3>
+            <p id="confirm-message" class="text-sm text-slate-400 leading-relaxed text-center"></p>
+            <div class="flex space-x-3 pt-2">
+                <button type="button" id="confirm-cancel-btn"
+                    class="flex-1 bg-slate-800 hover:bg-slate-700 text-white font-medium py-3 px-4 rounded-xl text-xs transition-all">
+                    取消
+                </button>
+                <button type="button" id="confirm-ok-btn"
+                    class="flex-1 bg-rose-600 hover:bg-rose-500 text-white font-bold py-3 px-4 rounded-xl text-xs transition-all">
+                    確認
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- 5. 群組管理模態視窗 -->
     <div id="groups-modal"
         class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm hidden flex items-center justify-center p-6">
@@ -804,7 +826,7 @@
 
             const filteredItems = vaultItems.filter(item => {
                 const matchesGroup = (groupFilter === 'all' || item.group === groupFilter);
-                const matchesSearch = item.title.toLowerCase().includes(searchKeyword) ||
+                const matchesSearch = (item.title || '').toLowerCase().includes(searchKeyword) ||
                     (item.username && item.username.toLowerCase().includes(searchKeyword));
                 return matchesGroup && matchesSearch;
             });
@@ -838,8 +860,9 @@
 
                 const card = document.createElement('div');
                 card.className = "bg-android-darkSurface rounded-3xl p-4 flex items-center justify-between border border-slate-800/60 hover:border-slate-700 transition-all cursor-pointer";
+                // 使用者資料只以 escapeHtml() 放進文字內容，事件一律用 addEventListener 綁定，避免注入
                 card.innerHTML = `
-                    <div class="flex items-center space-x-3.5 flex-1 min-w-0" onclick="editCredential('${item.id}')">
+                    <div class="flex items-center space-x-3.5 flex-1 min-w-0" data-action="edit">
                         <div class="w-11 h-11 rounded-2xl ${iconBg} flex items-center justify-center shrink-0">
                             <i class="${iconClass} text-lg"></i>
                         </div>
@@ -850,15 +873,27 @@
                     </div>
                     <div class="flex items-center space-x-1">
                         ${item.password ? `
-                            <button onclick="event.stopPropagation(); copyToClipboard('${escapeJs(item.password)}', '密碼')" class="ripple-btn p-3 text-slate-400 hover:text-slate-200 active:text-brand-400 rounded-full">
+                            <button type="button" data-action="copy" class="ripple-btn p-3 text-slate-400 hover:text-slate-200 active:text-brand-400 rounded-full">
                                 <i class="fas fa-copy"></i>
                             </button>
                         ` : ''}
-                        <button onclick="event.stopPropagation(); deleteCredential('${item.id}')" class="ripple-btn p-3 text-slate-500 hover:text-rose-400 rounded-full">
+                        <button type="button" data-action="delete" class="ripple-btn p-3 text-slate-500 hover:text-rose-400 rounded-full">
                             <i class="fas fa-trash-alt"></i>
                         </button>
                     </div>
                 `;
+                card.querySelector('[data-action="edit"]').addEventListener('click', () => editCredential(item.id));
+                const copyBtn = card.querySelector('[data-action="copy"]');
+                if (copyBtn) {
+                    copyBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        copyToClipboard(item.password, '密碼');
+                    });
+                }
+                card.querySelector('[data-action="delete"]').addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    deleteCredential(item.id);
+                });
                 listContainer.appendChild(card);
             });
         }
@@ -950,6 +985,15 @@
         }
 
         async function deleteCredential(id) {
+            const target = vaultItems.find(item => item.id === id);
+            if (!target) return;
+            const confirmed = await showConfirm(
+                "刪除這個項目？",
+                `「${target.title || '未命名'}」將從此裝置永久刪除，無法復原。`,
+                "刪除"
+            );
+            if (!confirmed) return;
+
             vaultItems = vaultItems.filter(item => item.id !== id);
             await saveVaultToLocalStorage();
             renderVault();
@@ -982,13 +1026,18 @@
                 if (editingGroupName === gName) {
                     itemDiv.innerHTML = `
                         <div class="flex items-center space-x-2 flex-1 mr-2">
-                            <input type="text" id="inline-edit-group-input" class="w-full bg-android-darkSurface border border-brand-500 rounded-xl px-3 py-1.5 text-xs text-slate-200 focus:outline-none" value="${escapeHtml(gName)}" onkeydown="handleInlineRenameKey(event, '${escapeJs(gName)}')">
+                            <input type="text" id="inline-edit-group-input" class="w-full bg-android-darkSurface border border-brand-500 rounded-xl px-3 py-1.5 text-xs text-slate-200 focus:outline-none">
                         </div>
                         <div class="flex items-center space-x-1 shrink-0">
-                            <button onclick="saveRenameGroupInline('${escapeJs(gName)}')" class="p-2 text-emerald-400 hover:bg-slate-800 rounded-full"><i class="fas fa-check text-xs"></i></button>
-                            <button onclick="cancelRenameGroupInline()" class="p-2 text-slate-400 hover:bg-slate-800 rounded-full"><i class="fas fa-times text-xs"></i></button>
+                            <button type="button" data-action="save" class="p-2 text-emerald-400 hover:bg-slate-800 rounded-full"><i class="fas fa-check text-xs"></i></button>
+                            <button type="button" data-action="cancel" class="p-2 text-slate-400 hover:bg-slate-800 rounded-full"><i class="fas fa-times text-xs"></i></button>
                         </div>
                     `;
+                    const editInput = itemDiv.querySelector('#inline-edit-group-input');
+                    editInput.value = gName;
+                    editInput.addEventListener('keydown', (e) => handleInlineRenameKey(e, gName));
+                    itemDiv.querySelector('[data-action="save"]').addEventListener('click', () => saveRenameGroupInline(gName));
+                    itemDiv.querySelector('[data-action="cancel"]').addEventListener('click', cancelRenameGroupInline);
                     list.appendChild(itemDiv);
                     setTimeout(() => {
                         const input = document.getElementById('inline-edit-group-input');
@@ -1000,12 +1049,15 @@
                             ${escapeHtml(gName)} ${isDefault ? '<span class="text-[9px] bg-brand-500/20 text-brand-400 px-2 py-0.5 rounded-full ml-1.5">主設</span>' : ''}
                         </span>
                         <div class="flex items-center space-x-1 shrink-0">
-                            <button onclick="startRenameGroupInline('${escapeJs(gName)}')" class="p-2 text-slate-400 hover:text-brand-400 rounded-full hover:bg-slate-800"><i class="fas fa-edit text-xs"></i></button>
+                            <button type="button" data-action="rename" class="p-2 text-slate-400 hover:text-brand-400 rounded-full hover:bg-slate-800"><i class="fas fa-edit text-xs"></i></button>
                             ${!isDefault ? `
-                                <button onclick="deleteGroup('${escapeJs(gName)}')" class="p-2 text-slate-500 hover:text-rose-400 rounded-full hover:bg-slate-800"><i class="fas fa-trash-alt text-xs"></i></button>
+                                <button type="button" data-action="delete" class="p-2 text-slate-500 hover:text-rose-400 rounded-full hover:bg-slate-800"><i class="fas fa-trash-alt text-xs"></i></button>
                             ` : ''}
                         </div>
                     `;
+                    itemDiv.querySelector('[data-action="rename"]').addEventListener('click', () => startRenameGroupInline(gName));
+                    const delGroupBtn = itemDiv.querySelector('[data-action="delete"]');
+                    if (delGroupBtn) delGroupBtn.addEventListener('click', () => deleteGroup(gName));
                     list.appendChild(itemDiv);
                 }
             });
@@ -1187,26 +1239,81 @@
             showToast("保險庫備份已安全匯出", "success");
         }
 
-        function importEncryptedVault(event) {
-            const file = event.target.files[0];
+        async function importEncryptedVault(event) {
+            const input = event.target;
+            const file = input.files[0];
+            input.value = ''; // 清空，讓同一個檔案可以再次選取
             if (!file) return;
-            const reader = new FileReader();
-            reader.onload = function (e) {
-                try {
-                    const content = e.target.result;
-                    const parsed = JSON.parse(content);
-                    if (parsed.salt && parsed.iv && parsed.ciphertext) {
-                        localStorage.setItem('cipherkeep_encrypted_vault', content);
-                        showToast("加密備份讀入成功，請重輸主密碼解鎖！", "success");
-                        setTimeout(() => location.reload(), 2000);
-                    } else {
-                        showToast("無效的保險庫加密格式", "error");
-                    }
-                } catch (err) {
-                    showToast("解析失敗，請確保是 CipherKeep 加密 JSON 檔", "error");
-                }
-            };
-            reader.readAsText(file);
+
+            let content, parsed;
+            try {
+                content = await file.text();
+                parsed = JSON.parse(content);
+            } catch (err) {
+                showToast("解析失敗，請確保是 CipherKeep 加密 JSON 檔", "error");
+                return;
+            }
+            if (!parsed || !parsed.salt || !parsed.iv || !parsed.ciphertext) {
+                showToast("無效的保險庫加密格式", "error");
+                return;
+            }
+
+            // 先嘗試用目前的主密碼解密，確認備份內容
+            let payload = null;
+            const decrypted = masterPassword ? await decryptData(parsed, masterPassword) : null;
+            if (decrypted !== null) {
+                try { payload = JSON.parse(decrypted); } catch (e) { payload = null; }
+            }
+
+            if (payload) {
+                const importCount = Array.isArray(payload.items) ? payload.items.length : 0;
+                const confirmed = await showConfirm(
+                    "匯入並覆蓋目前資料？",
+                    `備份內含 ${importCount} 筆項目。匯入後，目前保險庫的 ${vaultItems.length} 筆項目將被取代，無法復原。`,
+                    "匯入"
+                );
+                if (!confirmed) return;
+
+                vaultItems = Array.isArray(payload.items) ? payload.items : [];
+                groups = Array.isArray(payload.groups) && payload.groups.length > 0 ? payload.groups : ['預設群組'];
+                groupFilter = 'all';
+                await saveVaultToLocalStorage();
+                renderVault();
+                showToast("備份已成功匯入", "success");
+            } else {
+                const confirmed = await showConfirm(
+                    "此備份使用不同的主密碼",
+                    `無法用目前的主密碼解開這個備份。若仍要匯入，目前保險庫的 ${vaultItems.length} 筆項目將被取代且無法復原，之後必須輸入「該備份的主密碼」才能解鎖。建議先匯出目前的保險庫。`,
+                    "仍要匯入"
+                );
+                if (!confirmed) return;
+
+                localStorage.setItem('cipherkeep_encrypted_vault', content);
+                showToast("備份已匯入，請輸入該備份的主密碼解鎖", "success");
+                setTimeout(() => location.reload(), 2000);
+            }
+        }
+
+        // 通用確認視窗：回傳 Promise<boolean>，使用者按確認為 true、取消為 false
+        function showConfirm(title, message, okText = "確認") {
+            return new Promise(resolve => {
+                const modal = document.getElementById('confirm-modal');
+                const okBtn = document.getElementById('confirm-ok-btn');
+                const cancelBtn = document.getElementById('confirm-cancel-btn');
+                document.getElementById('confirm-title').innerText = title;
+                document.getElementById('confirm-message').innerText = message;
+                okBtn.innerText = okText;
+
+                const finish = (result) => {
+                    modal.classList.add('hidden');
+                    okBtn.onclick = null;
+                    cancelBtn.onclick = null;
+                    resolve(result);
+                };
+                okBtn.onclick = () => finish(true);
+                cancelBtn.onclick = () => finish(false);
+                modal.classList.remove('hidden');
+            });
         }
 
         function confirmClearVault() { document.getElementById('danger-modal').classList.remove('hidden'); }
@@ -1251,8 +1358,6 @@
         function escapeHtml(str) {
             return String(str).replace(/[&<>"']/g, s => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': '&quot;', "'": '&#39;' }[s]));
         }
-
-        function escapeJs(str) { return String(str).replace(/'/g, "\\'").replace(/"/g, '\\"'); }
 
         function copyToClipboard(text, label = "內容") {
             const textarea = document.createElement("textarea");

@@ -1,11 +1,14 @@
 // 離線快取控制核心
-const CACHE_NAME = 'cipherkeep-offline-cache-v2';
+const CACHE_NAME = 'cipherkeep-offline-cache-v3';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
   './manifest.json',
   'https://cdn.tailwindcss.com',
   'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css',
+  // Font Awesome 圖示字型檔（CSS 內以相對路徑引用，需預先快取，否則離線時圖示會消失）
+  'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/webfonts/fa-solid-900.woff2',
+  'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/webfonts/fa-regular-400.woff2',
   'https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+TC:wght@300;400;500;700&display=swap'
 ];
 
@@ -60,7 +63,10 @@ self.addEventListener('fetch', (event) => {
 
       // 2. 如果沒有，發起網路請求，並動態快取新下載的資源
       return fetch(event.request).then((networkResponse) => {
-        if (!networkResponse || networkResponse.status !== 200 || networkResponse.type !== 'basic') {
+        // 同網域 (basic) 與支援 CORS 的 CDN 資源 (cors，例如 Google Fonts 字型檔) 都加入快取
+        const cacheable = networkResponse && networkResponse.status === 200 &&
+          (networkResponse.type === 'basic' || networkResponse.type === 'cors');
+        if (!cacheable) {
           return networkResponse;
         }
 
@@ -73,7 +79,7 @@ self.addEventListener('fetch', (event) => {
       }).catch(() => {
         // 3. 斷網時的終極兜底：若使用者在完全斷網下訪問其他變體路徑，直接返回快取的 index.html
         if (event.request.mode === 'navigate') {
-          return caches.match('./index.html') || caches.match('./');
+          return caches.match('./index.html').then((res) => res || caches.match('./'));
         }
       });
     })

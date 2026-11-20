@@ -47,7 +47,8 @@ python -m http.server 8000
 ### UI
 - 三個分頁：`vault`（保險庫）、`generator`（產生器）、`tools`（設定備份），以 `switchTab()` 切換。
 - 畫面以 `hidden` class 切換顯示；事件綁定大多為 inline `onclick` / `oninput`。
-- 列表使用字串模板動態產生 DOM，**插入使用者資料時必須使用 `escapeHtml()`；放進 inline JS 字串時使用 `escapeJs()`**，以避免 XSS。
+- 列表使用字串模板動態產生 DOM，**使用者資料只能以 `escapeHtml()` 放進文字內容；絕不可放進 inline `onclick` 等屬性**。動態元素一律用 `data-action` 標記，再以 `addEventListener` 綁定事件，以避免 XSS 與跳脫錯誤。
+- 需要使用者確認的破壞性操作（刪除、覆蓋）使用 `await showConfirm(title, message, okText)`，回傳 `true` / `false`。
 
 ### 匯出 / 匯入
 匯出即為 `localStorage` 中的加密 JSON 原文；匯入時檢查欄位後直接覆寫，並需重新以主密碼解鎖。
