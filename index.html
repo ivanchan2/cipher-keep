@@ -535,6 +535,7 @@
 
         // 頁面載入初始化
         window.onload = async function () {
+            loadGeneratorSettings();
             initApp();
             initDragToScroll();
             detectBiometricSupport();
@@ -1575,8 +1576,45 @@
             }
         }
 
+        // 產生器參數（長度與字元類型）不屬於敏感資料，以明文存於本機，下次開啟時沿用
+        const GENERATOR_SETTINGS_KEY = 'cipherkeep_generator_settings';
+        const GENERATOR_CHECKBOXES = {
+            upper: 'chk-uppercase', lower: 'chk-lowercase', numbers: 'chk-numbers', symbols: 'chk-symbols'
+        };
+
+        function getGeneratorSettings() {
+            const settings = { length: parseInt(document.getElementById('length-slider').value) };
+            for (const [key, id] of Object.entries(GENERATOR_CHECKBOXES)) {
+                settings[key] = document.getElementById(id).checked;
+            }
+            return settings;
+        }
+
+        function saveGeneratorSettings() {
+            try {
+                localStorage.setItem(GENERATOR_SETTINGS_KEY, JSON.stringify(getGeneratorSettings()));
+            } catch (e) { /* 儲存空間不可用時忽略，僅本次有效 */ }
+        }
+
+        function loadGeneratorSettings() {
+            let saved;
+            try { saved = JSON.parse(localStorage.getItem(GENERATOR_SETTINGS_KEY)); } catch (e) { saved = null; }
+            if (!saved || typeof saved !== 'object') return;
+
+            const slider = document.getElementById('length-slider');
+            const length = parseInt(saved.length);
+            if (Number.isInteger(length)) {
+                slider.value = Math.min(parseInt(slider.max), Math.max(parseInt(slider.min), length));
+            }
+            for (const [key, id] of Object.entries(GENERATOR_CHECKBOXES)) {
+                if (typeof saved[key] === 'boolean') document.getElementById(id).checked = saved[key];
+            }
+            document.getElementById('length-val').innerText = slider.value;
+        }
+
         function updateGeneratorSettings() {
             document.getElementById('length-val').innerText = document.getElementById('length-slider').value;
+            saveGeneratorSettings();
             regeneratePassword();
         }
 
@@ -1588,7 +1626,11 @@
         }
 
         function fillWithGeneratedPassword() {
-            const pwd = generatePassword(16, true, true, true, true);
+            // 沿用產生器目前的參數；若未勾選任何字元類型，退回預設（16 碼、全部類型）
+            const s = getGeneratorSettings();
+            const pwd = (s.upper || s.lower || s.numbers || s.symbols)
+                ? generatePassword(s.length, s.upper, s.lower, s.numbers, s.symbols)
+                : generatePassword(16, true, true, true, true);
             document.getElementById('item-password').value = pwd;
             showToast("已帶入隨機安全密碼！", "success");
         }
@@ -1694,6 +1736,7 @@
         function clearVaultAndWipe() {
             // 只刪除本 App 的資料；GitHub Pages 等同網域的其他專案共用 localStorage，不可用 clear()
             localStorage.removeItem(VAULT_STORAGE_KEY);
+            localStorage.removeItem(GENERATOR_SETTINGS_KEY);
             removeBiometricRecord();
             closeDangerModal();
             showToast("資料已徹底抹除", "success");

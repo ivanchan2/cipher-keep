@@ -78,6 +78,7 @@ npx tailwindcss@3 -c tailwind.config.js -o tailwind.css --minify
 - 三個分頁：`vault`（保險庫）、`generator`（產生器）、`tools`（設定備份），以 `switchTab()` 切換。
 - 畫面以 `hidden` class 切換顯示；靜態按鈕使用 inline `onclick`。
 - 列表使用字串模板動態產生 DOM，**使用者資料只能以 `escapeHtml()` 放進文字內容；絕不可放進 inline `onclick` 等屬性**。動態元素一律用 `data-action` 標記，再以 `addEventListener` 綁定事件，以避免 XSS 與跳脫錯誤。
+- 產生器參數（長度、四種字元類型）每次變更即以明文 `{ length, upper, lower, numbers, symbols }` 存入 `localStorage[GENERATOR_SETTINGS_KEY]`，啟動時由 `loadGeneratorSettings()` 還原；表單的「帶入隨機密碼」也沿用這組參數。不屬敏感資料，上鎖時不清除，清除保險庫時一併刪除。
 - 需要使用者確認的破壞性操作（刪除、覆蓋）使用 `await showConfirm(title, message, okText)`，回傳 `true` / `false`。
 
 ### 匯出 / 匯入
@@ -90,7 +91,7 @@ npx tailwindcss@3 -c tailwind.config.js -o tailwind.css --minify
 - 風格沿用既有的 Tailwind 色票：`brand-*`（紫色系，只定義了 50/100/500/600/700/900）與 `android-darkBg / darkSurface / darkSurfaceVariant`，深色、Material/Android 風格，版面寬度上限 `max-w-md`。
 - **修改 `sw.js` 快取內容或任何被快取的資源後，務必遞增 `CACHE_NAME` 版本號**，否則已安裝的使用者會一直讀到舊版。
 - **不要加入任何第三方 `<script>`**。若新增外部樣式或字型，需同時：加入 `sw.js` 的 `ASSETS_TO_CACHE`、調整 `index.html` 的 CSP，並盡量加上 SRI（`integrity`）。
-- `localStorage` 只能操作 CipherKeep 自己的鍵（`VAULT_STORAGE_KEY`、`BIOMETRIC_STORAGE_KEY`），**不可使用 `localStorage.clear()`**（GitHub Pages 同網域的其他專案共用儲存空間）。
+- `localStorage` 只能操作 CipherKeep 自己的鍵（`VAULT_STORAGE_KEY`、`BIOMETRIC_STORAGE_KEY`、`GENERATOR_SETTINGS_KEY`），**不可使用 `localStorage.clear()`**（GitHub Pages 同網域的其他專案共用儲存空間）。
 - 變更加密參數或資料格式時，必須沿用 `v` / `iter` 欄位做向下相容，讓舊保險庫與舊備份仍可解密。
 
 ## 已知注意事項
