@@ -23,7 +23,7 @@ CipherKeep 的目標是**繞過應用程式商店，讓任何人都能在自己�
 - 📴 **完全離線**：Service Worker 會快取所有資源，首次開啟後不再需要網路。
 - 📱 **可安裝為 App**：加入主畫面後會以獨立視窗開啟，不會顯示瀏覽器網址列。
 - 🗂️ **自訂群組**：可自由新增、重新命名、刪除分類，並用標籤快速篩選。
-- 🔎 **即時搜尋**：依標題、帳號或網站快速找到項目。
+- 🔎 **即時搜尋**：依標題、帳號或備註快速找到項目。
 - 🎲 **強密碼產生器**：採用密碼學安全亂數（`crypto.getRandomValues()`），長度可調整（6–64 字元），並可自選大小寫字母、數字與符號。
 - 💾 **加密備份**：可匯出、匯入加密後的 JSON 備份檔，方便換機或保存。
 
@@ -47,13 +47,14 @@ CipherKeep 的目標是**繞過應用程式商店，讓任何人都能在自己�
 
 ### 部署
 
-只要把以下四個檔案放在同一個目錄，上傳到任何靜態網站空間即可（例如 GitHub Pages、Netlify、Cloudflare Pages）：
+只要把以下檔案與 `icons/` 資料夾放在同一個目錄，上傳到任何靜態網站空間即可（例如 GitHub Pages、Netlify、Cloudflare Pages）：
 
 ```
 index.html
 tailwind.css
 manifest.json
 sw.js
+icons/
 ```
 
 > ⚠️ 正式環境必須使用 **HTTPS**，否則瀏覽器不會啟用 App 安裝與離線功能。
@@ -110,7 +111,8 @@ cipher-keep/
 ├── tailwind.css        # 預先編譯的樣式
 ├── tailwind.config.js  # 重新產生 tailwind.css 用的設定
 ├── manifest.json       # PWA 安裝設定
-└── sw.js               # 離線快取用的 Service Worker
+├── sw.js               # 離線快取用的 Service Worker
+└── icons/              # App 與主畫面圖示
 ```
 
 > 修改介面的 Tailwind class 後，需要重新產生 `tailwind.css`：

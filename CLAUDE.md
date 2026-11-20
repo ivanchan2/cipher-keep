@@ -15,6 +15,7 @@ CipherKeep（密碼守護者）是一個**純前端、零後端**的離線密碼
 | `tailwind.config.js` | 重新產生 `tailwind.css` 用的設定（色票、字型） |
 | `manifest.json` | PWA 安裝設定（名稱、主題色、圖示） |
 | `sw.js` | Service Worker，負責離線快取（Offline First） |
+| `icons/` | PWA 與主畫面圖示（PNG） |
 
 沒有建置步驟、沒有套件管理器、沒有測試框架。**頁面不載入任何第三方腳本**；外部資源只有樣式與字型：Font Awesome 6.4.0（cdnjs，含 SRI）、Google Fonts（Inter、Noto Sans TC）。
 
@@ -88,4 +89,4 @@ npx tailwindcss@3 -c tailwind.config.js -o tailwind.css --minify
 
 - 所有與密碼相關的亂數一律使用 `secureRandomInt()`（`crypto.getRandomValues()` 加拒絕取樣），**不要使用 `Math.random()`**；洗牌使用 Fisher-Yates。
 - 主密碼於解鎖期間仍以明文保存在 `masterPassword`（匯入其他備份時需要用它解密）。
-- `manifest.json` 與 `apple-touch-icon` 的圖示目前使用 `placehold.co` 佔位圖片。
+- App 圖示位於 `icons/`（`icon-192.png`、`icon-512.png`、`apple-touch-icon.png`），已加入 `sw.js` 快取。
