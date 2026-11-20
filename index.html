@@ -124,7 +124,11 @@
                             class="w-full ripple-btn bg-brand-600 hover:bg-brand-500 text-white font-semibold py-3.5 px-6 rounded-2xl shadow-lg transition-all">
                             解鎖保險庫
                         </button>
-                    </div>
+                        <button id="btn-biometric-unlock" onclick="handleBiometricUnlock()"
+                            class="hidden w-full ripple-btn bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold py-3.5 px-6 rounded-2xl transition-all flex items-center justify-center space-x-2 border border-slate-700">
+                            <i class="fas fa-fingerprint"></i>
+                            <span>使用指紋 / Face ID 解鎖</span>
+                        </button>                    </div>
                 </div>
             </div>
 
@@ -284,6 +288,20 @@
                             <input type="file" id="import-file-input" onchange="importEncryptedVault(event)"
                                 class="hidden" accept=".json">
                         </label>
+                    </div>
+                </div>
+
+                <!-- 生物辨識解鎖 -->
+                <div class="bg-android-darkSurface rounded-3xl p-5 space-y-4 border border-slate-800">
+                    <h3 class="font-bold text-sm text-slate-400 uppercase tracking-wider">生物辨識解鎖</h3>
+                    <p class="text-xs text-slate-500 leading-relaxed">啟用後可用指紋或 Face ID 解鎖。主密碼會以裝置的通行金鑰（WebAuthn PRF）加密保存在本機，沒有通過生物辨識就無法解開，解鎖時不需要網路。請仍然牢記主密碼，換機或停用時需要它。</p>
+                    <p class="text-xs text-amber-500/80 leading-relaxed"><i class="fas fa-wifi mr-1"></i> 第一次設定需要連網：建立通行金鑰時，手機可能需要連線到 iCloud 或 Google 帳號。設定完成後即可離線使用。</p>
+                    <div class="flex items-center justify-between">
+                        <span id="biometric-status-text" class="text-xs text-slate-400">檢測中...</span>
+                        <button id="btn-toggle-biometric" onclick="toggleBiometric()"
+                            class="hidden px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold rounded-full transition-all border border-slate-700 shrink-0">
+                            啟用
+                        </button>
                     </div>
                 </div>
 
@@ -519,6 +537,7 @@
         window.onload = async function () {
             initApp();
             initDragToScroll();
+            detectBiometricSupport();
         };
 
         function initApp() {
@@ -533,6 +552,7 @@
                 document.getElementById('confirm-password-group').classList.remove('hidden');
                 document.getElementById('lock-subtitle').innerText = "初次使用：内建「預設群組」分類，解鎖後可任意自訂";
             }
+            updateBiometricUI();
         }
 
         // 訊息吐司
@@ -748,6 +768,7 @@
 
             try {
                 if (!hasSavedData) {
+                    removeBiometricRecord(); // 舊保險庫的生物辨識資料已無意義
                     masterPassword = passwordInput;
                     vaultItems = [];
                     groups = ['預設群組'];
@@ -758,43 +779,279 @@
                     return;
                 }
 
-                let encryptedPayload = null;
-                try { encryptedPayload = JSON.parse(hasSavedData); } catch (e) { encryptedPayload = null; }
-                const result = encryptedPayload ? await decryptVault(encryptedPayload, passwordInput) : null;
-                if (!result) {
-                    showToast("主密碼錯誤，解鎖失敗", "error");
-                    return;
-                }
-
-                let parsed;
-                try {
-                    parsed = JSON.parse(result.text);
-                } catch (e) {
-                    showToast("保險庫資料損毀，無法讀取", "error");
-                    return;
-                }
-
-                masterPassword = passwordInput;
-                vaultItems = Array.isArray(parsed.items) ? parsed.items : [];
-                groups = Array.isArray(parsed.groups) && parsed.groups.length > 0 ? parsed.groups : ['預設群組'];
-
-                if (result.iterations < PBKDF2_ITERATIONS) {
-                    // 舊版保險庫：以新的迭代次數重新加密，自動升級
-                    await setNewVaultKey(passwordInput);
-                    await saveVaultToLocalStorage();
-                    showToast("解鎖成功，已自動升級加密強度", "success");
-                } else {
-                    vaultKey = result.key;
-                    vaultSalt = result.salt;
-                    vaultIterations = result.iterations;
-                    showToast("解鎖成功", "success");
-                }
-                enterVault();
+                await unlockExistingVault(passwordInput);
             } finally {
                 submitBtn.disabled = false;
                 if (submitBtn.innerText === "解鎖中..." || submitBtn.innerText === "建立中...") {
                     submitBtn.innerText = originalText;
                 }
+            }
+        }
+
+        // 以主密碼解開現有保險庫並進入主畫面；成功回傳 true（主密碼輸入與生物辨識共用）
+        async function unlockExistingVault(password) {
+            let encryptedPayload = null;
+            try { encryptedPayload = JSON.parse(localStorage.getItem(VAULT_STORAGE_KEY)); } catch (e) { encryptedPayload = null; }
+            const result = encryptedPayload ? await decryptVault(encryptedPayload, password) : null;
+            if (!result) {
+                showToast("主密碼錯誤，解鎖失敗", "error");
+                return false;
+            }
+
+            let parsed;
+            try {
+                parsed = JSON.parse(result.text);
+            } catch (e) {
+                showToast("保險庫資料損毀，無法讀取", "error");
+                return false;
+            }
+
+            masterPassword = password;
+            vaultItems = Array.isArray(parsed.items) ? parsed.items : [];
+            groups = Array.isArray(parsed.groups) && parsed.groups.length > 0 ? parsed.groups : ['預設群組'];
+
+            if (result.iterations < PBKDF2_ITERATIONS) {
+                // 舊版保險庫：以新的迭代次數重新加密，自動升級
+                await setNewVaultKey(password);
+                await saveVaultToLocalStorage();
+                showToast("解鎖成功，已自動升級加密強度", "success");
+            } else {
+                vaultKey = result.key;
+                vaultSalt = result.salt;
+                vaultIterations = result.iterations;
+                showToast("解鎖成功", "success");
+            }
+            enterVault();
+            return true;
+        }
+
+        // ==========================================
+        // 生物辨識解鎖 (WebAuthn 通行金鑰 + PRF 擴充)
+        // 主密碼以「PRF 輸出 → HKDF → AES-GCM」加密後存在本機；
+        // 沒有通過指紋 / Face ID 就拿不到 PRF 輸出，也就解不開。整個流程不需要伺服器，可離線使用。
+        // ==========================================
+        const BIOMETRIC_STORAGE_KEY = 'cipherkeep_biometric';
+        const BIOMETRIC_HKDF_INFO = 'cipherkeep-biometric-v1';
+        let biometricAvailable = false;
+
+        async function detectBiometricSupport() {
+            try {
+                biometricAvailable = !!(window.PublicKeyCredential && window.isSecureContext &&
+                    await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable());
+            } catch (e) {
+                biometricAvailable = false;
+            }
+            updateBiometricUI();
+        }
+
+        function getBiometricRecord() {
+            try {
+                const record = JSON.parse(localStorage.getItem(BIOMETRIC_STORAGE_KEY));
+                return record && record.v === 1 && record.credentialId ? record : null;
+            } catch (e) {
+                return null;
+            }
+        }
+
+        function removeBiometricRecord() {
+            localStorage.removeItem(BIOMETRIC_STORAGE_KEY);
+        }
+
+        async function prfToAesKey(prfOutput) {
+            const baseKey = await window.crypto.subtle.importKey("raw", prfOutput, "HKDF", false, ["deriveKey"]);
+            return window.crypto.subtle.deriveKey(
+                { name: "HKDF", hash: "SHA-256", salt: new Uint8Array(32), info: new TextEncoder().encode(BIOMETRIC_HKDF_INFO) },
+                baseKey,
+                { name: "AES-GCM", length: 256 },
+                false,
+                ["encrypt", "decrypt"]
+            );
+        }
+
+        // 要求使用者通過生物辨識，並取得此通行金鑰對 prfSalt 的 PRF 輸出
+        async function getPrfOutput(credentialId, prfSalt) {
+            const assertion = await navigator.credentials.get({
+                publicKey: {
+                    challenge: window.crypto.getRandomValues(new Uint8Array(32)),
+                    allowCredentials: [{ type: "public-key", id: credentialId }],
+                    userVerification: "required",
+                    timeout: 60000,
+                    extensions: { prf: { eval: { first: prfSalt } } }
+                }
+            });
+            const prf = assertion.getClientExtensionResults().prf;
+            const first = prf && prf.results && prf.results.first;
+            if (!first) throw new Error("PRF_UNSUPPORTED");
+            return first;
+        }
+
+        function biometricErrorMessage(err, phase) {
+            if (err && err.message === "PRF_UNSUPPORTED") {
+                return "此裝置或瀏覽器不支援安全的生物辨識解鎖（需要 iOS 18 以上，或新版 Chrome 搭配 Google 密碼管理工具）";
+            }
+            if (err && err.name === "NotAllowedError") {
+                return phase === "setup" ? "已取消或逾時，生物辨識未啟用" : "已取消生物辨識，請改用主密碼";
+            }
+            if (phase === "setup") {
+                return navigator.onLine
+                    ? "設定失敗，請確認裝置已設定螢幕鎖定與指紋 / Face ID"
+                    : "設定失敗：第一次設定需要連網，請連上網路後再試";
+            }
+            return "生物辨識解鎖失敗，請改用主密碼";
+        }
+
+        function toggleBiometric() {
+            if (getBiometricRecord()) disableBiometric();
+            else enableBiometric();
+        }
+
+        async function enableBiometric() {
+            if (!isVaultUnlocked() || !masterPassword) return;
+
+            if (!navigator.onLine) {
+                const proceed = await showConfirm(
+                    "目前沒有網路連線",
+                    "第一次設定生物辨識需要連網：建立通行金鑰時，手機可能需要連線到 iCloud 或 Google 帳號。設定完成後，解鎖就不需要網路。建議連上網路後再設定。",
+                    "仍要嘗試"
+                );
+                if (!proceed) return;
+            }
+
+            const btn = document.getElementById('btn-toggle-biometric');
+            btn.disabled = true;
+            btn.innerText = "設定中...";
+            try {
+                const prfSalt = window.crypto.getRandomValues(new Uint8Array(32));
+                const credential = await navigator.credentials.create({
+                    publicKey: {
+                        rp: { name: "CipherKeep" },
+                        user: {
+                            id: window.crypto.getRandomValues(new Uint8Array(16)),
+                            name: "CipherKeep",
+                            displayName: "CipherKeep 保險庫"
+                        },
+                        challenge: window.crypto.getRandomValues(new Uint8Array(32)),
+                        pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }],
+                        authenticatorSelection: {
+                            authenticatorAttachment: "platform",
+                            residentKey: "required",
+                            userVerification: "required"
+                        },
+                        timeout: 60000,
+                        extensions: { prf: { eval: { first: prfSalt } } }
+                    }
+                });
+
+                const prf = credential.getClientExtensionResults().prf || {};
+                if (prf.enabled !== true && !(prf.results && prf.results.first)) {
+                    throw new Error("PRF_UNSUPPORTED");
+                }
+                // 部分平台建立時不會直接回傳 PRF 輸出，需要再驗證一次生物辨識
+                const prfOutput = (prf.results && prf.results.first) || await getPrfOutput(credential.rawId, prfSalt);
+
+                const wrapKey = await prfToAesKey(prfOutput);
+                const iv = window.crypto.getRandomValues(new Uint8Array(12));
+                const ciphertext = await window.crypto.subtle.encrypt(
+                    { name: "AES-GCM", iv: iv }, wrapKey, new TextEncoder().encode(masterPassword)
+                );
+                localStorage.setItem(BIOMETRIC_STORAGE_KEY, JSON.stringify({
+                    v: 1,
+                    credentialId: bufferToBase64(credential.rawId),
+                    prfSalt: bufferToBase64(prfSalt),
+                    iv: bufferToBase64(iv),
+                    ciphertext: bufferToBase64(ciphertext)
+                }));
+                showToast("生物辨識解鎖已啟用，之後離線也能使用", "success");
+            } catch (err) {
+                console.error("生物辨識設定失敗:", err);
+                showToast(biometricErrorMessage(err, "setup"), "error");
+            } finally {
+                btn.disabled = false;
+                updateBiometricUI();
+            }
+        }
+
+        async function disableBiometric() {
+            const confirmed = await showConfirm(
+                "停用生物辨識解鎖？",
+                "停用後需要輸入主密碼才能解鎖。系統中名為「CipherKeep」的通行金鑰不會自動刪除，可到 iCloud 鑰匙圈或 Google 密碼管理工具中手動移除。",
+                "停用"
+            );
+            if (!confirmed) return;
+            removeBiometricRecord();
+            updateBiometricUI();
+            showToast("已停用生物辨識解鎖");
+        }
+
+        async function handleBiometricUnlock() {
+            const record = getBiometricRecord();
+            const btn = document.getElementById('btn-biometric-unlock');
+            if (!record || btn.disabled) {
+                updateBiometricUI();
+                return;
+            }
+
+            btn.disabled = true;
+            try {
+                const prfOutput = await getPrfOutput(
+                    base64ToBuffer(record.credentialId),
+                    new Uint8Array(base64ToBuffer(record.prfSalt))
+                );
+                const wrapKey = await prfToAesKey(prfOutput);
+
+                let password;
+                try {
+                    const plain = await window.crypto.subtle.decrypt(
+                        { name: "AES-GCM", iv: new Uint8Array(base64ToBuffer(record.iv)) },
+                        wrapKey,
+                        base64ToBuffer(record.ciphertext)
+                    );
+                    password = new TextDecoder().decode(plain);
+                } catch (e) {
+                    removeBiometricRecord();
+                    showToast("生物辨識資料無效，已停用，請輸入主密碼後重新啟用", "error");
+                    return;
+                }
+
+                if (!(await unlockExistingVault(password))) {
+                    // 保險庫已換成其他主密碼（例如匯入了別的備份），舊的生物辨識資料不再適用
+                    removeBiometricRecord();
+                    showToast("主密碼已變更，請輸入主密碼後重新啟用生物辨識", "error");
+                }
+            } catch (err) {
+                console.error("生物辨識解鎖失敗:", err);
+                showToast(biometricErrorMessage(err, "unlock"), "error");
+            } finally {
+                btn.disabled = false;
+                updateBiometricUI();
+            }
+        }
+
+        function updateBiometricUI() {
+            const record = getBiometricRecord();
+            const hasVault = !!localStorage.getItem(VAULT_STORAGE_KEY);
+            const canUse = biometricAvailable && !!record && hasVault;
+
+            // 鎖定畫面
+            document.getElementById('btn-biometric-unlock').classList.toggle('hidden', !canUse);
+
+            // 設定頁
+            const status = document.getElementById('biometric-status-text');
+            const toggleBtn = document.getElementById('btn-toggle-biometric');
+            if (!biometricAvailable) {
+                status.innerText = "此裝置或瀏覽器無法使用生物辨識";
+                status.className = "text-xs text-slate-500";
+                toggleBtn.classList.add('hidden');
+            } else if (record) {
+                status.innerText = "已啟用";
+                status.className = "text-xs text-emerald-400";
+                toggleBtn.innerText = "停用";
+                toggleBtn.classList.remove('hidden');
+            } else {
+                status.innerText = "尚未啟用";
+                status.className = "text-xs text-slate-400";
+                toggleBtn.innerText = "啟用";
+                toggleBtn.classList.remove('hidden');
             }
         }
 
@@ -1404,6 +1661,7 @@
                 if (!confirmed) return;
 
                 localStorage.setItem(VAULT_STORAGE_KEY, content);
+                removeBiometricRecord(); // 主密碼不同，舊的生物辨識資料不再適用
                 showToast("備份已匯入，請輸入該備份的主密碼解鎖", "success");
                 setTimeout(() => location.reload(), 2000);
             }
@@ -1436,6 +1694,7 @@
         function clearVaultAndWipe() {
             // 只刪除本 App 的資料；GitHub Pages 等同網域的其他專案共用 localStorage，不可用 clear()
             localStorage.removeItem(VAULT_STORAGE_KEY);
+            removeBiometricRecord();
             closeDangerModal();
             showToast("資料已徹底抹除", "success");
             setTimeout(() => location.reload(), 1000);

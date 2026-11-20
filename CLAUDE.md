@@ -60,8 +60,16 @@ npx tailwindcss@3 -c tailwind.config.js -o tailwind.css --minify
 - `lockVault(message)` 會清除金鑰、記憶體資料，以及畫面上殘留的敏感內容（表單、列表、產生器、開啟中的視窗）。新增顯示敏感資料的元素時，要一併加入清除。
 - `copyToClipboard()` 複製後 30 秒會清空剪貼簿；若當下頁面不在前景，會在使用者回到頁面或下一次互動時再清除。
 
+### 生物辨識解鎖（WebAuthn PRF）
+- 啟用（`enableBiometric()`）：建立平台通行金鑰（`authenticatorAttachment: "platform"`、`userVerification: "required"`），取得 PRF 輸出 → HKDF-SHA256（info `cipherkeep-biometric-v1`）→ AES-GCM 金鑰，用它加密**主密碼**，存到 `localStorage[BIOMETRIC_STORAGE_KEY]`：`{ v: 1, credentialId, prfSalt, iv, ciphertext }`。
+- 解鎖（`handleBiometricUnlock()`）：`navigator.credentials.get()` 取得 PRF 輸出 → 解開主密碼 → 走與主密碼相同的 `unlockExistingVault(password)`。全程在裝置上完成，**可離線使用**；只有第一次建立通行金鑰可能需要連網（UI 已提示）。
+- **不支援 PRF 時一律不啟用**，絕不能退回「把主密碼或金鑰明文存在本機、只用生物辨識擋畫面」的做法。
+- 不強制定期輸入主密碼（使用者要求移除）；啟用後可一直用生物辨識解鎖，主密碼仍可隨時使用。
+- 主密碼改變時（匯入不同主密碼的備份、建立新保險庫、清除保險庫），必須呼叫 `removeBiometricRecord()`；解開的主密碼無法解鎖保險庫時也會自動移除。
+- 本機測試時請用模擬的 `navigator.credentials` 或 DevTools 虛擬驗證器，避免跳出真實的系統驗證視窗。
+
 ### 全域狀態
-`masterPassword`、`vaultKey`、`vaultSalt`、`vaultIterations`、`vaultItems`、`groups`（第一個元素 `預設群組` 為不可刪除的預設群組）、`activeTab`、`groupFilter`、`editingGroupName`。用 `isVaultUnlocked()` 判斷是否已解鎖。
+`masterPassword`、`vaultKey`、`vaultSalt`、`vaultIterations`、`biometricAvailable`、`vaultItems`、`groups`（第一個元素 `預設群組` 為不可刪除的預設群組）、`activeTab`、`groupFilter`、`editingGroupName`。用 `isVaultUnlocked()` 判斷是否已解鎖。
 
 ### 資料模型
 憑證項目：`{ id, group, title, username, password, notes }`。刪除群組時，其項目會遷移至 `groups[0]`。
@@ -82,7 +90,7 @@ npx tailwindcss@3 -c tailwind.config.js -o tailwind.css --minify
 - 風格沿用既有的 Tailwind 色票：`brand-*`（紫色系，只定義了 50/100/500/600/700/900）與 `android-darkBg / darkSurface / darkSurfaceVariant`，深色、Material/Android 風格，版面寬度上限 `max-w-md`。
 - **修改 `sw.js` 快取內容或任何被快取的資源後，務必遞增 `CACHE_NAME` 版本號**，否則已安裝的使用者會一直讀到舊版。
 - **不要加入任何第三方 `<script>`**。若新增外部樣式或字型，需同時：加入 `sw.js` 的 `ASSETS_TO_CACHE`、調整 `index.html` 的 CSP，並盡量加上 SRI（`integrity`）。
-- `localStorage` 只能操作 `VAULT_STORAGE_KEY`，**不可使用 `localStorage.clear()`**（GitHub Pages 同網域的其他專案共用儲存空間）。
+- `localStorage` 只能操作 CipherKeep 自己的鍵（`VAULT_STORAGE_KEY`、`BIOMETRIC_STORAGE_KEY`），**不可使用 `localStorage.clear()`**（GitHub Pages 同網域的其他專案共用儲存空間）。
 - 變更加密參數或資料格式時，必須沿用 `v` / `iter` 欄位做向下相容，讓舊保險庫與舊備份仍可解密。
 
 ## 已知注意事項

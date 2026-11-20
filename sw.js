@@ -1,5 +1,5 @@
 // 離線快取控制核心
-const CACHE_NAME = 'cipherkeep-offline-cache-v6';
+const CACHE_NAME = 'cipherkeep-offline-cache-v7';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
